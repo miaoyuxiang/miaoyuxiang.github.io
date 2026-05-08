@@ -15,12 +15,24 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 從環境獲取設定 (這部分在預覽時會自動生效)
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // 使用您提供的 Firebase 配置資訊
+        const firebaseConfig = {
+            apiKey: "AIzaSyBMqOn8ihqPxWP7L1rKMMH07t8Y8QSX_Zs",
+            authDomain: "miaocard.firebaseapp.com",
+            projectId: "miaocard",
+            storageBucket: "miaocard.firebasestorage.app",
+            messagingSenderId: "39206538337",
+            appId: "1:39206538337:web:8b1712d916038e4ce6ae20",
+            measurementId: "G-5V0PWWG70Z"
+        };
+
+        // 初始化 Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'miaocard-live-sync';
+        
+        // 設定專案識別碼
+        const appId = "miaocard-prod-v1";
 
         // 將 Firebase 實體掛載到 window，讓 React 腳本可以抓到
         window.FB = { auth, db, appId, doc, setDoc, onSnapshot, collection, signInAnonymously, signInWithCustomToken, onAuthStateChanged };
@@ -58,14 +70,11 @@
             React.useEffect(() => {
                 const init = async () => {
                     if (!window.FB) return;
-                    const { auth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = window.FB;
+                    const { auth, signInAnonymously, onAuthStateChanged } = window.FB;
                     
                     try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        // 這裡統一使用匿名登入，確保朋友打開網頁也能連上
+                        await signInAnonymously(auth);
                     } catch (err) { console.error("登入失敗", err); }
 
                     onAuthStateChanged(auth, (u) => {
@@ -89,7 +98,7 @@
                 if (!user) return;
                 const { db, appId, doc, onSnapshot } = window.FB;
                 
-                // 固定路徑：所有裝置共享此份資料
+                // 固定路徑：所有裝置共享此份資料 (使用 public data 路徑)
                 const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'shared_decks_v1');
                 
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -98,7 +107,7 @@
                     }
                     setLoading(false);
                 }, (err) => {
-                    console.error("即時同步錯誤", err);
+                    console.error("即時同步錯誤: 請確認 Firebase 的 Firestore Rules 已開啟權限", err);
                     setLoading(false);
                 });
 
@@ -182,7 +191,7 @@
                 <div className="min-h-screen flex items-center justify-center bg-slate-50">
                     <div className="text-center">
                         <Icons.Cloud className="w-16 h-16 text-blue-400 mx-auto animate-bounce mb-4" />
-                        <p className="text-slate-500 font-black tracking-widest uppercase animate-pulse">Connecting to Cloud...</p>
+                        <p className="text-slate-500 font-black tracking-widest uppercase animate-pulse">正在連線至您的雲端資料庫...</p>
                     </div>
                 </div>
             );
@@ -200,7 +209,7 @@
                         <div className="mb-2 flex items-center justify-center gap-2">
                             <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1 ${syncing ? 'bg-amber-100 text-amber-600' : 'bg-green-100 text-green-600'}`}>
                                 <Icons.Cloud className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
-                                {syncing ? 'Syncing...' : 'Live Synchronized'}
+                                {syncing ? '同步中...' : '雲端已連線 (即時同步)'}
                             </span>
                         </div>
                         <h1 className="text-4xl font-black text-slate-800 mb-6 tracking-tight">苗寶字卡系統</h1>
@@ -239,7 +248,7 @@
                                     <div className={`relative w-full h-full transition-transform duration-700 [transform-style:preserve-3d] cursor-pointer ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`} onClick={handleFlip}>
                                         {/* Front */}
                                         <div className="absolute w-full h-full [backface-visibility:hidden] bg-white rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-12 border-b-8 border-blue-500 text-center overflow-y-auto custom-scrollbar">
-                                            <div className="absolute top-6 left-8 text-[10px] font-black bg-blue-50 text-blue-500 px-3 py-1 rounded-full uppercase tracking-widest">正面</div>
+                                            <div className="absolute top-6 left-8 text-[10px] font-black bg-blue-50 text-blue-600 px-3 py-1 rounded-full uppercase tracking-widest">正面</div>
                                             <button onClick={toggleStar} className={`absolute top-6 right-16 p-2 rounded-full transition-colors ${currentCard?.isStarred ? 'text-yellow-400' : 'text-slate-200 hover:text-yellow-400'}`}><Icons.Star className="w-6 h-6" fill={currentCard?.isStarred ? "currentColor" : "none"} /></button>
                                             <button onClick={(e) => {e.stopPropagation(); setModalState({isOpen: true, type: 'deleteCard'});}} className="absolute top-6 right-6 text-slate-200 hover:text-rose-500 p-2"><Icons.Trash2 className="w-6 h-6" /></button>
                                             <div className="text-2xl md:text-4xl text-slate-800 font-bold leading-snug w-full">{currentCard?.front}</div>
