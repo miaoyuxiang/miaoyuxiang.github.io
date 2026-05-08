@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>苗寶字卡系統 - 雲端自動同步版</title>
+    <title>苗寶字卡系統 - 穩定雲端版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -12,23 +12,26 @@
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase 初始化邏輯
+        // 智慧型初始化：如果環境變數不存在，則不強制執行雲端，避免卡死
         window.initFirebase = async () => {
             try {
-                if (typeof __firebase_config === 'undefined') return null;
+                if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                    console.warn("未偵測到雲端設定，將使用本地儲存模式");
+                    return null;
+                }
                 const firebaseConfig = JSON.parse(__firebase_config);
                 const app = initializeApp(firebaseConfig);
                 const auth = getAuth(app);
                 const db = getFirestore(app);
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'miaocard-global-sync';
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'miaocard-v1';
                 
                 await signInAnonymously(auth);
-                return { db, appId, doc, setDoc, onSnapshot, auth };
+                return { db, appId, doc, setDoc, onSnapshot };
             } catch (e) {
-                console.error("Firebase 初始化失敗", e);
+                console.error("Firebase 初始化失敗:", e);
                 return null;
             }
         };
@@ -53,7 +56,7 @@
         const App = () => {
             const [decks, setDecks] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
-            const [syncStatus, setSyncStatus] = React.useState('connecting'); // 'connecting', 'synced', 'error'
+            const [isCloudMode, setIsCloudMode] = React.useState(false);
             const [activeCategoryIndex, setActiveCategoryIndex] = React.useState(0);
             const [currentCardIndex, setCurrentCardIndex] = React.useState(0);
             const [isFlipped, setIsFlipped] = React.useState(false);
@@ -62,53 +65,70 @@
             const [formData, setFormData] = React.useState({ deckName: '', cardFront: '', cardBack: '', importText: '', importMode: 'append', newDeckName: '' });
 
             const fbRef = React.useRef(null);
+            const LOCAL_STORAGE_KEY = 'miaocard_global_backup';
 
-            // 核心邏輯：自動連接全域雲端儲存
+            // 啟動邏輯
             React.useEffect(() => {
-                const startSync = async () => {
+                const startApp = async () => {
                     const FB = await window.initFirebase();
-                    fbRef.current = FB;
-
+                    
                     if (FB) {
+                        // 雲端連線成功
+                        fbRef.current = FB;
+                        setIsCloudMode(true);
                         const { db, appId, doc, onSnapshot } = FB;
-                        // 使用固定路徑，所有裝置共享此資料
                         const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_flashcards');
                         
-                        const unsubscribe = onSnapshot(docRef, (snap) => {
+                        onSnapshot(docRef, (snap) => {
                             if (snap.exists()) {
-                                setDecks(snap.data().decks || []);
+                                const data = snap.data().decks || [];
+                                setDecks(data);
+                                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
                             }
-                            setSyncStatus('synced');
                             setLoading(false);
                         }, (err) => {
-                            console.error("同步出錯", err);
-                            setSyncStatus('error');
-                            setLoading(false);
+                            console.error("雲端讀取錯誤:", err);
+                            fallbackToLocal();
                         });
-                        return () => unsubscribe();
                     } else {
-                        setSyncStatus('error');
-                        setLoading(false);
+                        // 連線失敗（如在 GitHub Pages 運行），切換本地
+                        fallbackToLocal();
                     }
                 };
-                startSync();
+
+                const fallbackToLocal = () => {
+                    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+                    if (saved) setDecks(JSON.parse(saved));
+                    setIsCloudMode(false);
+                    setLoading(false);
+                };
+
+                startApp();
+                
+                // 強制跳轉保護：3秒內沒載入完成也直接進入
+                const timeout = setTimeout(() => {
+                    setLoading(false);
+                }, 3000);
+
+                return () => clearTimeout(timeout);
             }, []);
 
-            // 儲存至雲端
-            const updateCloud = async (newDecks) => {
-                if (!fbRef.current) return;
-                const { db, appId, doc, setDoc } = fbRef.current;
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_flashcards');
-                try {
-                    await setDoc(docRef, { decks: newDecks }, { merge: true });
-                } catch (e) {
-                    console.error("上傳失敗", e);
-                }
-            };
-
-            const handleDataChange = (newDecks) => {
+            // 統一儲存邏輯
+            const saveData = async (newDecks) => {
                 setDecks(newDecks);
-                updateCloud(newDecks);
+                // 永遠備份到本地
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newDecks));
+                
+                // 如果是雲端模式，同步上去
+                if (isCloudMode && fbRef.current) {
+                    const { db, appId, doc, setDoc } = fbRef.current;
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'global_flashcards');
+                    try {
+                        await setDoc(docRef, { decks: newDecks }, { merge: true });
+                    } catch (e) {
+                        console.error("雲端同步失敗:", e);
+                    }
+                }
             };
 
             const currentCategory = decks[activeCategoryIndex] || null;
@@ -133,9 +153,9 @@
 
             if (loading) return (
                 <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                    <div className="text-center animate-pulse">
-                        <Icons.Cloud className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-                        <p className="text-slate-500 font-black tracking-widest">正在連接全域雲端...</p>
+                    <div className="text-center">
+                        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-slate-500 font-bold tracking-widest">正在啟動系統...</p>
                     </div>
                 </div>
             );
@@ -144,9 +164,9 @@
                 <div className="min-h-screen flex flex-col items-center py-8 px-4 max-w-4xl mx-auto">
                     <div className="w-full text-center mb-8 relative">
                         <div className="mb-2 flex items-center justify-center gap-2">
-                            <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1 ${syncStatus === 'synced' ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>
+                            <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-1 ${isCloudMode ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-500'}`}>
                                 <Icons.Cloud className="w-3 h-3" />
-                                {syncStatus === 'synced' ? 'Cloud Live Sync' : 'Sync Error'}
+                                {isCloudMode ? 'Cloud Live Sync' : 'Local Backup Mode'}
                             </span>
                         </div>
                         <h1 className="text-4xl font-black text-slate-800 mb-6 tracking-tight">苗寶字卡系統</h1>
@@ -158,7 +178,7 @@
 
                     {decks.length === 0 ? (
                         <div className="w-full bg-white p-16 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center shadow-sm">
-                            <p className="text-slate-400 font-bold">雲端目前是空的，請開始建立字卡。</p>
+                            <p className="text-slate-400 font-bold">目前沒有任何卡組，請點擊上方按鈕開始。</p>
                         </div>
                     ) : (
                         <div className="w-full">
@@ -180,14 +200,14 @@
                                     </div>
                                 ) : (
                                     <div className={`relative w-full h-full transition-transform duration-700 [transform-style:preserve-3d] cursor-pointer ${isFlipped ? '[transform:rotateY(180deg)]' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
-                                        <div className="absolute w-full h-full [backface-visibility:hidden] bg-white rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 border-b-8 border-blue-500 text-center overflow-y-auto">
+                                        <div className="absolute w-full h-full [backface-visibility:hidden] bg-white rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 border-b-8 border-blue-500 text-center overflow-y-auto custom-scrollbar">
                                             <div className="absolute top-6 left-8 text-[10px] font-black bg-blue-50 text-blue-500 px-3 py-1 rounded-full uppercase tracking-widest">正面</div>
-                                            <button onClick={(e) => {e.stopPropagation(); const newDecks=[...decks]; newDecks[activeCategoryIndex].cards[currentCard.originalIndex].isStarred = !currentCard.isStarred; handleDataChange(newDecks);}} className={`absolute top-6 right-16 p-2 rounded-full ${currentCard?.isStarred ? 'text-yellow-400' : 'text-slate-200 hover:text-yellow-400'}`}><Icons.Star className="w-6 h-6" fill={currentCard?.isStarred ? "currentColor" : "none"} /></button>
+                                            <button onClick={(e) => {e.stopPropagation(); const newDecks=[...decks]; newDecks[activeCategoryIndex].cards[currentCard.originalIndex].isStarred = !currentCard.isStarred; saveData(newDecks);}} className={`absolute top-6 right-16 p-2 rounded-full ${currentCard?.isStarred ? 'text-yellow-400' : 'text-slate-200 hover:text-yellow-400'}`}><Icons.Star className="w-6 h-6" fill={currentCard?.isStarred ? "currentColor" : "none"} /></button>
                                             <button onClick={(e) => {e.stopPropagation(); setModalState({isOpen: true, type: 'deleteCard'});}} className="absolute top-6 right-6 text-slate-200 hover:text-rose-500 p-2"><Icons.Trash2 className="w-6 h-6" /></button>
                                             <div className="text-2xl md:text-4xl text-slate-800 font-bold leading-snug w-full px-4">{currentCard?.front}</div>
-                                            <div className="absolute bottom-6 text-slate-300 text-[10px] font-black flex items-center gap-2 tracking-widest uppercase">點擊翻面 <Icons.RotateCcw className="w-3 h-3"/></div>
+                                            <div className="absolute bottom-6 text-slate-300 text-[10px] font-black flex items-center gap-2 tracking-widest uppercase italic">點擊翻面 <Icons.RotateCcw className="w-3 h-3"/></div>
                                         </div>
-                                        <div className="absolute w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-slate-800 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 border-b-8 border-rose-500 text-center overflow-y-auto">
+                                        <div className="absolute w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] bg-slate-800 rounded-[2.5rem] shadow-xl flex flex-col items-center justify-center p-10 border-b-8 border-rose-500 text-center overflow-y-auto custom-scrollbar">
                                             <div className="absolute top-6 left-8 text-[10px] font-black bg-rose-500/20 text-rose-400 px-3 py-1 rounded-full uppercase tracking-widest">背面</div>
                                             <div className="text-xl md:text-3xl text-white font-medium leading-relaxed w-full px-4">{currentCard?.back}</div>
                                         </div>
@@ -242,10 +262,10 @@
                                             } else {
                                                 newDecks[activeCategoryIndex].cards = [...newDecks[activeCategoryIndex].cards, ...newCards];
                                             }
-                                            handleDataChange(newDecks);
+                                            saveData(newDecks);
                                             setModalState({isOpen: false, type: null});
                                             setFormData({...formData, importText: ''});
-                                        }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">匯入並即時同步</button>
+                                        }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">匯入字卡</button>
                                     </div>
                                 )}
 
@@ -258,21 +278,21 @@
                                             if(!formData.cardFront || !formData.cardBack) return;
                                             const newDecks = [...decks];
                                             newDecks[activeCategoryIndex].cards.push({ front: formData.cardFront, back: formData.cardBack, isStarred: false });
-                                            handleDataChange(newDecks);
+                                            saveData(newDecks);
                                             setModalState({isOpen: false, type: null});
                                             setFormData({...formData, cardFront: '', cardBack: ''});
-                                        }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">儲存並同步</button>
+                                        }} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg">儲存字卡</button>
                                     </div>
                                 )}
 
                                 {modalState.type === 'addDeck' && (
                                     <div>
                                         <h3 className="text-xl font-black mb-6 text-slate-800">建立新卡組</h3>
-                                        <input autoFocus type="text" className="w-full bg-slate-50 p-4 rounded-2xl mb-6 outline-none font-bold shadow-inner" placeholder="卡組標題..." value={formData.deckName} onChange={e => setFormData({...formData, deckName: e.target.value})} onKeyDown={e => { if(e.key==='Enter' && formData.deckName) { const nextDecks = [...decks, {category: formData.deckName, cards: []}]; handleDataChange(nextDecks); setActiveCategoryIndex(nextDecks.length - 1); setModalState({isOpen: false}); setFormData({...formData, deckName: ''}); }}} />
+                                        <input autoFocus type="text" className="w-full bg-slate-50 p-4 rounded-2xl mb-6 outline-none font-bold shadow-inner" placeholder="卡組標題..." value={formData.deckName} onChange={e => setFormData({...formData, deckName: e.target.value})} onKeyDown={e => { if(e.key==='Enter' && formData.deckName) { const nextDecks = [...decks, {category: formData.deckName, cards: []}]; saveData(nextDecks); setActiveCategoryIndex(nextDecks.length - 1); setModalState({isOpen: false}); setFormData({...formData, deckName: ''}); }}} />
                                         <button onClick={() => {
                                             if(!formData.deckName) return;
                                             const nextDecks = [...decks, {category: formData.deckName, cards: []}];
-                                            handleDataChange(nextDecks);
+                                            saveData(nextDecks);
                                             setActiveCategoryIndex(nextDecks.length - 1);
                                             setModalState({isOpen: false, type: null});
                                             setFormData({...formData, deckName: ''});
@@ -294,7 +314,7 @@
                                                     newDecks[activeCategoryIndex].cards.splice(currentCard.originalIndex, 1);
                                                     setCurrentCardIndex(Math.max(0, currentCardIndex - 1));
                                                 }
-                                                handleDataChange(newDecks);
+                                                saveData(newDecks);
                                                 setModalState({isOpen: false, type: null});
                                             }} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-bold">確定刪除</button>
                                         </div>
