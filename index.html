@@ -13,10 +13,10 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        // 1. 引入 Firebase SDK
+        // 1. 引入 Firebase SDK (新增 setPersistence, browserLocalPersistence 確保手機保持登入)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         // 2. Firebase 配置
         const firebaseConfig = {
@@ -33,6 +33,9 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
+        
+        // 強制設定本地永久登入狀態 (解決手機關閉網頁需重新登入的問題)
+        setPersistence(auth, browserLocalPersistence).catch(console.error);
 
         // 3. 圖示組件
         const Icons = {
@@ -102,7 +105,12 @@
                 syncToCloud(newDecks);
             };
 
-            const handleLogin = () => signInWithPopup(auth, provider);
+            const handleLogin = () => {
+                setPersistence(auth, browserLocalPersistence)
+                    .then(() => signInWithPopup(auth, provider))
+                    .catch(console.error);
+            };
+            
             const handleLogout = () => signOut(auth);
 
             // 資料計算與舊資料相容處理
@@ -122,6 +130,7 @@
             
             const currentCard = currentCards[currentCardIndex] || null;
             const totalCards = currentCards.length;
+            const is3Sided = Boolean(currentCard && currentCard.middle);
 
             // 快捷鍵控制
             React.useEffect(() => {
@@ -336,7 +345,6 @@
                     updateDecks(newDecks);
                     setCurrentCardIndex(prev => Math.max(0, prev - 1));
                     
-                    // 從多選名單中移除
                     const newSelected = new Set(selectedCards);
                     if(newSelected.has(originalIdx)) {
                         newSelected.delete(originalIdx);
@@ -350,7 +358,6 @@
                 if(selectedCards.size === 0) return;
                 if(window.confirm(`確定要刪除選取的 ${selectedCards.size} 張卡片嗎？操作無法復原。`)) {
                     const newDecks = [...decks];
-                    // 從後面往前刪除以避免 index 位移問題
                     const indices = Array.from(selectedCards).sort((a,b)=>b-a);
                     indices.forEach(idx => {
                         newDecks[activeCategoryIndex].cards.splice(idx, 1);
@@ -468,10 +475,10 @@
             const closeModal = () => {
                 setModalState({ isOpen: false, type: null });
                 setFormData(prev => ({ ...prev, deckName: '', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', newDeckName: '', editIndex: null }));
-                setSelectedCards(new Set()); // 關閉視窗時清空多選
+                setSelectedCards(new Set()); 
             };
 
-            // ====== 動態多面翻轉引擎邏輯 (包含六向自訂順序) ======
+            // ====== 動態多面翻轉引擎邏輯 (包含智慧型選單過濾) ======
             const faces = React.useMemo(() => {
                 if (!currentCard) return [];
                 
@@ -481,7 +488,6 @@
                     B: { label: '背面', text: currentCard.back, theme: 'back' }
                 };
 
-                // 將 'FMB' 等字串拆解為陣列，並過濾掉 null (支援雙面卡過濾掉 M)
                 const orderArr = flipOrder.split('');
                 const resultFaces = orderArr.map(key => faceMap[key]).filter(Boolean);
                 
@@ -623,16 +629,23 @@
                                         <div className="flex items-center gap-2 md:gap-3">
                                             <span className="font-bold text-gray-800 text-xl">{currentCategory.category}</span>
                                             
-                                            {/* 六向翻轉順序選單 */}
+                                            {/* 智慧判斷：如果目前是三面卡，提供六種選擇；如果是雙面卡，映射為兩種選擇 */}
                                             <div className="relative">
-                                                <select value={flipOrder} onChange={(e) => {setFlipOrder(e.target.value); setFlipAngle(0);}} className="text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full font-bold outline-none cursor-pointer hover:bg-gray-300 transition-colors appearance-none pr-8">
-                                                    <option value="FMB">🔄 正 ➔ 中 ➔ 背</option>
-                                                    <option value="FBM">🔄 正 ➔ 背 ➔ 中</option>
-                                                    <option value="MFB">🔄 中 ➔ 正 ➔ 背</option>
-                                                    <option value="MBF">🔄 中 ➔ 背 ➔ 正</option>
-                                                    <option value="BFM">🔄 背 ➔ 正 ➔ 中</option>
-                                                    <option value="BMF">🔄 背 ➔ 中 ➔ 正</option>
-                                                </select>
+                                                {is3Sided ? (
+                                                    <select value={flipOrder.length === 3 ? flipOrder : 'FMB'} onChange={(e) => {setFlipOrder(e.target.value); setFlipAngle(0);}} className="text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full font-bold outline-none cursor-pointer hover:bg-gray-300 transition-colors appearance-none pr-8">
+                                                        <option value="FMB">🔄 正 ➔ 中 ➔ 背</option>
+                                                        <option value="FBM">🔄 正 ➔ 背 ➔ 中</option>
+                                                        <option value="MFB">🔄 中 ➔ 正 ➔ 背</option>
+                                                        <option value="MBF">🔄 中 ➔ 背 ➔ 正</option>
+                                                        <option value="BFM">🔄 背 ➔ 正 ➔ 中</option>
+                                                        <option value="BMF">🔄 背 ➔ 中 ➔ 正</option>
+                                                    </select>
+                                                ) : (
+                                                    <select value={flipOrder.indexOf('F') < flipOrder.indexOf('B') ? 'FB' : 'BF'} onChange={(e) => {setFlipOrder(e.target.value === 'FB' ? 'FMB' : 'BMF'); setFlipAngle(0);}} className="text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded-full font-bold outline-none cursor-pointer hover:bg-gray-300 transition-colors appearance-none pr-8">
+                                                        <option value="FB">🔄 正 ➔ 背</option>
+                                                        <option value="BF">🔄 背 ➔ 正</option>
+                                                    </select>
+                                                )}
                                                 <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
                                                     <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                                                 </div>
