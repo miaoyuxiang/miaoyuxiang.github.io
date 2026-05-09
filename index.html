@@ -18,7 +18,7 @@
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // 2. Firebase 配置 [cite: 3]
+        // 2. Firebase 配置
         const firebaseConfig = {
             apiKey: "AIzaSyBMqOn8ihqPxWP7L1rKMMH07t8Y8QSX_Zs",
             authDomain: "miaocard.firebaseapp.com",
@@ -53,7 +53,7 @@
         };
 
         const App = () => {
-            // 狀態管理 [cite: 13]
+            // 狀態管理
             const [user, setUser] = React.useState(null);
             const [decks, setDecks] = React.useState([]);
             const [activeCategoryIndex, setActiveCategoryIndex] = React.useState(0);
@@ -64,12 +64,12 @@
             // 將原本的 isFlipped 替換為 flipAngle，用來支援無限次數的翻轉
             const [flipAngle, setFlipAngle] = React.useState(0);
             
-            // 新增 cardType 與 cardMiddle 來支援三面字卡 [cite: 16]
+            // 新增 cardType 與 cardMiddle 來支援三面字卡
             const [formData, setFormData] = React.useState({ deckName: '', cardFront: '', cardMiddle: '', cardBack: '', importText: '', importMode: 'append', newDeckName: '', cardType: '2sided' });
             
             const fileInputRef = React.useRef(null);
             
-            // 監聽登入狀態 [cite: 17]
+            // 監聽登入狀態
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
                     setUser(currentUser);
@@ -78,7 +78,7 @@
                 return () => unsubscribe();
             }, []);
 
-            // 監聽雲端資料庫 [cite: 19]
+            // 監聽雲端資料庫
             React.useEffect(() => {
                 if (!user) return;
                 const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
@@ -89,7 +89,7 @@
                 return () => unsub();
             }, [user]);
 
-            // 同步至雲端的通用函式 [cite: 21]
+            // 同步至雲端的通用函式
             const syncToCloud = async (newDecks) => {
                 if (!user) return;
                 await setDoc(doc(db, "users", user.uid), { decks: newDecks });
@@ -103,7 +103,7 @@
             const handleLogin = () => signInWithPopup(auth, provider);
             const handleLogout = () => signOut(auth);
 
-            // 資料計算 [cite: 25]
+            // 資料計算
             const currentCategory = decks[activeCategoryIndex] || null;
             const allCards = currentCategory?.cards || [];
             
@@ -113,7 +113,7 @@
             const currentCard = currentCards[currentCardIndex] || null;
             const totalCards = currentCards.length;
 
-            // 快捷鍵控制 [cite: 27]
+            // 快捷鍵控制
             React.useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (modalState.isOpen || !user) return;
@@ -168,16 +168,16 @@
                 event.target.value = null; 
             };
 
-            // 快速匯入文字 (支援假名格式) [cite: 42]
+            // 快速匯入文字 (支援假名格式)
             const handleTextImport = () => {
                 if (!formData.importText.trim()) return;
                 const cards = [];
                 const blocks = formData.importText.split(/【正面】(?:：|:)?/).filter(b => b.trim() !== '');
                 
                 blocks.forEach(block => {
-                    // 偵測是否包含假名 (三面模式)
-                    if (block.includes('【假名】')) {
-                        const parts1 = block.split(/【假名】(?:：|:)?/);
+                    // 偵測是否包含中間 (三面模式)
+                    if (block.includes('【中間】')) {
+                        const parts1 = block.split(/【中間】(?:：|:)?/);
                         const front = parts1[0].trim();
                         const parts2 = parts1[1].split(/【背面】(?:：|:)?/);
                         if (parts2.length >= 2) {
@@ -219,7 +219,7 @@
                 setTimeout(() => alert(`🎉 成功匯入 ${cards.length} 張字卡，並已同步至雲端！`), 100);
             };
 
-            // 翻轉角度增加 180 度 [cite: 50]
+            // 翻轉角度增加 180 度
             const handleFlip = () => totalCards > 0 && setFlipAngle(prev => prev + 180);
 
             const handleFirstCard = () => {
@@ -279,7 +279,7 @@
                 if (!formData.cardFront.trim() || !formData.cardBack.trim()) return;
                 const newDecks = [...decks];
                 
-                // 根據模式建立不同的卡片 [cite: 63]
+                // 根據模式建立不同的卡片
                 const newCard = { front: formData.cardFront, back: formData.cardBack, isStarred: false };
                 if (formData.cardType === '3sided' && formData.cardMiddle.trim()) {
                     newCard.middle = formData.cardMiddle;
@@ -372,7 +372,7 @@
                         .perspective-1000 { perspective: 1000px; }
                     `}</style>
 
-                    {/* 頂部標題與登入區 [cite: 72] */}
+                    {/* 頂部標題與登入區 */}
                     <div className="w-full max-w-4xl flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
                         <div className="flex items-center gap-3">
                             <Icons.Cloud className="w-8 h-8 text-blue-500" />
@@ -427,7 +427,7 @@
                                 </div>
                             ) : (
                                 <div className="w-full max-w-2xl mx-auto">
-                                    {/* 卡組選擇分頁 [cite: 90] */}
+                                    {/* 卡組選擇分頁 */}
                                     <div className="flex overflow-x-auto custom-scrollbar bg-white p-2 rounded-2xl mb-6 border border-gray-200 gap-2 items-center shadow-sm">
                                         {decks.map((cat, i) => (
                                             <button 
@@ -519,7 +519,7 @@
                                         )}
                                     </div>
 
-                                    {/* 控制列與進度列 [cite: 133] */}
+                                    {/* 控制列與進度列 */}
                                     <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
                                         <div className="flex items-center gap-3 w-full md:w-auto">
                                             <div className="text-gray-500 text-sm font-bold bg-gray-100 px-4 py-3 rounded-2xl whitespace-nowrap">
@@ -550,7 +550,7 @@
                         </div>
                     )}
 
-                    {/* 所有彈出視窗模組 [cite: 148] */}
+                    {/* 所有彈出視窗模組 */}
                     {modalState.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-[fadeIn_0.2s]">
                             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 relative">
@@ -585,7 +585,7 @@
                                             <input autoFocus type="text" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-4 focus:border-blue-500 focus:bg-white outline-none text-sm transition-colors" placeholder="輸入新卡組名稱 (未輸入預設為：新匯入卡組)" value={formData.newDeckName} onChange={e => setFormData({...formData, newDeckName: e.target.value})} />
                                         )}
                                         
-                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(日文三面)：\n【正面】：猫\n【假名】：ねこ\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
+                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(三面)：\n【正面】：猫\n【中間】：ねこ\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
                                         <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-4 rounded-2xl font-bold hover:bg-black transition-colors shadow-lg">解析並同步至雲端</button>
                                     </div>
                                 )}
