@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>苗寶雲端字卡系統 (個人化主題版)</title>
+    <title>苗寶雲端字卡系統 (自訂顏色版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -51,7 +51,7 @@
             Cloud: ({className}) => <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19c3.037 0 5.5-2.463 5.5-5.5 0-2.77-2.053-5.06-4.73-5.412C17.343 4.316 14.113 1.5 10 1.5 6.012 1.5 2.71 3.99 1.63 7.428 0.7 8.24 0 9.54 0 11c0 2.21 1.79 4 4 4h13.5"/></svg>,
             Volume2: ({className}) => <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>,
             Star: ({className, fill="none"}) => <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
-            RotateCw: ({className}) => <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Palette: ({className}) => <svg xmlns="http://www.w3.org/2000/svg" className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
         };
 
         const App = () => {
@@ -62,14 +62,7 @@
             const [filterStatus, setFilterStatus] = React.useState('all'); 
             const [modalState, setModalState] = React.useState({ isOpen: false, type: null });
             const [flipAngle, setFlipAngle] = React.useState(0);
-            const [formData, setFormData] = React.useState({ deckName: '', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', importMode: 'append', newDeckName: '', cardType: '2sided', editIndex: null });
-            
-            // 自訂顏色管理
-            const [colors, setColors] = React.useState({
-                theme: '#503422', // 卡組名與頂部細線
-                btnAndFont: '#EBE6E0' // 按鈕背景與文字
-            });
-
+            const [formData, setFormData] = React.useState({ deckName: '', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', importMode: 'append', newDeckName: '', cardType: '2sided', editIndex: null, themeColor: '#503422', uiColor: '#EBE6E0', cardTextColor: '#374151', cardFontSize: '32' });
             const fileInputRef = React.useRef(null);
             
             React.useEffect(() => {
@@ -84,17 +77,15 @@
                 if (!user) return;
                 const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
                     if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        setDecks(data.decks || []);
-                        if (data.colors) setColors(data.colors);
+                        setDecks(docSnap.data().decks || []);
                     }
                 });
                 return () => unsub();
             }, [user]);
 
-            const syncToCloud = async (newDecks, newColors = colors) => {
+            const syncToCloud = async (newDecks) => {
                 if (!user) return;
-                await setDoc(doc(db, "users", user.uid), { decks: newDecks, colors: newColors });
+                await setDoc(doc(db, "users", user.uid), { decks: newDecks });
             };
 
             const updateDecks = (newDecks) => {
@@ -102,12 +93,16 @@
                 syncToCloud(newDecks);
             };
 
-            const handleLogin = () => signInWithPopup(auth, provider);
+            const handleLogin = () => setPersistence(auth, browserLocalPersistence).then(() => signInWithPopup(auth, provider));
             const handleLogout = () => signOut(auth);
 
             const currentCategory = decks[activeCategoryIndex] || null;
+            const themeColor = currentCategory?.themeColor || '#503422';
+            const uiColor = currentCategory?.uiColor || '#EBE6E0';
+            const cardTextColor = currentCategory?.cardTextColor || '#374151';
+            const cardFontSize = currentCategory?.cardFontSize || '32';
+
             const allCards = currentCategory?.cards || [];
-            
             const currentCardsWithIdx = allCards.map((c, idx) => ({ ...c, originalIndex: idx }));
 
             const currentCards = currentCardsWithIdx.filter(c => {
@@ -130,56 +125,37 @@
                 try { window.speechSynthesis.speak(utterance); } catch (e) {}
             };
 
-            const handleCopyAIPrompt = (type) => {
-                const promptText = type === '2sided' 
-                    ? "請幫我製作字卡，格式：\n【正面】：(單字)\n【背面】：(解釋)"
-                    : "請幫我製作字卡，格式：\n【正面】：(漢字)\n【中間】：(假名)\n【背面】：(解釋)";
-                navigator.clipboard.writeText(promptText).then(() => {
-                    alert("✅ 已複製！提醒：請自行調整括號內容。");
-                });
-            };
-
-            const handleTextImport = () => {
-                if (!formData.importText.trim()) return;
-                const cards = [];
-                const blocks = formData.importText.split(/【正面】(?:：|:)?/).filter(b => b.trim() !== '');
-                blocks.forEach(block => {
-                    if (block.includes('【中間】')) {
-                        const parts1 = block.split(/【中間】(?:：|:)?/);
-                        const parts2 = parts1[1].split(/【背面】(?:：|:)?/);
-                        cards.push({ front: parts1[0].trim(), middle: parts2[0].trim(), back: parts2[1].trim(), status: 'unrated', isStarred: false });
-                    } else {
-                        const parts = block.split(/【背面】(?:：|:)?/);
-                        cards.push({ front: parts[0].trim(), back: parts[1].trim(), status: 'unrated', isStarred: false });
-                    }
-                });
-                const newDecks = formData.importMode === 'new' ? [...decks, { category: formData.newDeckName || "新卡組", cards }] : decks.map((d, i) => i === activeCategoryIndex ? {...d, cards: [...d.cards, ...cards]} : d);
-                updateDecks(newDecks);
-                closeModal();
-            };
-
             const handleFlip = () => totalCards > 0 && setFlipAngle(prev => prev + 180);
-            const handleNext = () => totalCards > 1 && (setFlipAngle(0), setTimeout(() => setCurrentCardIndex(prev => (prev + 1) % totalCards), 150));
-            const handlePrev = () => totalCards > 1 && (setFlipAngle(0), setTimeout(() => setCurrentCardIndex(prev => (prev - 1 + totalCards) % totalCards), 150));
+            const handleNext = () => totalCards > 0 && (setFlipAngle(0), setTimeout(() => setCurrentCardIndex(p => (p + 1) % totalCards), 150));
+            const handlePrev = () => totalCards > 0 && (setFlipAngle(0), setTimeout(() => setCurrentCardIndex(p => (p - 1 + totalCards) % totalCards), 150));
             
-            // 恢復原本順序
-            const handleRestoreOrder = () => {
-                if (!currentCategory) return;
-                const newDecks = [...decks];
-                // 假設 originalIndex 就是加入時的順序（此處邏輯為不做 sort 即可回到 Firebase 原始儲存順序，如果要做物理恢復則重新存一次）
-                // 這裡我們直接對當前卡組不排序，讓 Firebase 的 snapshots 自動還原原始順序
-                alert("已恢復原始匯入順序");
-                setCurrentCardIndex(0);
-                setFlipAngle(0);
-            };
-
             const handleShuffle = () => {
                 if (totalCards <= 1) return;
                 setFlipAngle(0);
                 const newDecks = [...decks];
+                // 打亂前先標記建立順序 (如果還沒有的話)
+                newDecks[activeCategoryIndex].cards = newDecks[activeCategoryIndex].cards.map((c, i) => ({...c, createOrder: c.createOrder ?? i}));
                 newDecks[activeCategoryIndex].cards.sort(() => Math.random() - 0.5);
                 updateDecks(newDecks);
                 setCurrentCardIndex(0);
+            };
+
+            const handleRestoreOrder = () => {
+                if (!currentCategory) return;
+                setFlipAngle(0);
+                const newDecks = [...decks];
+                newDecks[activeCategoryIndex].cards.sort((a, b) => (a.createOrder ?? 0) - (b.createOrder ?? 0));
+                updateDecks(newDecks);
+                setCurrentCardIndex(0);
+            };
+
+            const handleToggleStar = (e) => {
+                e.stopPropagation();
+                if (!currentCard) return;
+                const newDecks = [...decks];
+                const card = newDecks[activeCategoryIndex].cards[currentCard.originalIndex];
+                card.isStarred = !card.isStarred;
+                updateDecks(newDecks);
             };
 
             const handleRateAndNext = (e, status) => {
@@ -191,23 +167,38 @@
                 handleNext();
             };
 
-            const toggleStar = (e) => {
-                e.stopPropagation();
+            const handleSaveTheme = () => {
                 const newDecks = [...decks];
-                newDecks[activeCategoryIndex].cards[currentCard.originalIndex].isStarred = !currentCard.isStarred;
-                updateDecks(newDecks);
-            };
-
-            const closeModal = () => setModalState({ isOpen: false, type: null });
-            const openNoteModal = () => setFormData({ ...formData, note: currentCard.note || '' }), setModalState({ isOpen: true, type: 'editNote' });
-            const handleSaveNote = () => {
-                const newDecks = [...decks];
-                newDecks[activeCategoryIndex].cards[currentCard.originalIndex].note = formData.note;
+                newDecks[activeCategoryIndex] = { 
+                    ...newDecks[activeCategoryIndex], 
+                    themeColor: formData.themeColor, 
+                    uiColor: formData.uiColor,
+                    cardTextColor: formData.cardTextColor,
+                    cardFontSize: formData.cardFontSize
+                };
                 updateDecks(newDecks);
                 closeModal();
             };
 
-            // ====== 動態多面翻轉邏輯 ======
+            const handleAddDeck = () => {
+                if (!formData.deckName.trim()) return;
+                const newDecks = [...decks, { category: formData.deckName, cards: [], themeColor: '#503422', uiColor: '#EBE6E0', cardTextColor: '#374151', cardFontSize: '32' }];
+                updateDecks(newDecks);
+                setActiveCategoryIndex(newDecks.length - 1);
+                closeModal();
+            };
+
+            const closeModal = () => {
+                setModalState({ isOpen: false, type: null });
+                setFormData(p => ({ ...p, deckName: '', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', editIndex: null }));
+            };
+
+            const openThemeModal = () => {
+                setFormData({ ...formData, themeColor, uiColor, cardTextColor, cardFontSize });
+                setModalState({ isOpen: true, type: 'theme' });
+            };
+
+            // 翻轉邏輯：固定 正 -> 中 -> 背
             const faces = React.useMemo(() => {
                 if (!currentCard) return [];
                 const base = [{ label: '正面', text: currentCard.front, theme: 'front' }];
@@ -217,170 +208,178 @@
             }, [currentCard]);
 
             const targetStep = Math.floor(flipAngle / 180);
-            const domFrontFace = faces.length > 0 ? faces[targetStep % 2 === 0 ? targetStep % faces.length : (targetStep - 1) % faces.length] : null;
-            const domBackFace = faces.length > 0 ? faces[targetStep % 2 === 1 ? targetStep % faces.length : (targetStep - 1) % faces.length] : null;
-
-            const getTextSizeClass = (text) => {
-                if (!text) return 'text-3xl';
-                const len = text.length;
-                if (len > 60) return 'text-lg';
-                if (len > 30) return 'text-xl';
-                return 'text-3xl';
-            };
+            const domFrontFace = faces.length > 0 ? faces[(targetStep % 2 === 0 ? targetStep : targetStep - 1) % faces.length] : null;
+            const domBackFace = faces.length > 0 ? faces[(targetStep % 2 === 1 ? targetStep : Math.max(0, targetStep - 1)) % faces.length] : null;
 
             return (
                 <div className="min-h-screen flex flex-col items-center py-10 px-4">
                     <style>{`
-                        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
-                        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
                         .preserve-3d { transform-style: preserve-3d; }
                         .backface-hidden { backface-visibility: hidden; }
                         .rotate-y-180 { transform: rotateY(180deg); }
                         .perspective-1000 { perspective: 1000px; }
+                        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+                        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
                     `}</style>
 
-                    {/* 頂部導覽 */}
+                    {/* 頂部標題 */}
                     <div className="w-full max-w-4xl flex justify-between items-center mb-8 gap-4">
                         <div className="flex items-center gap-3">
                             <Icons.Cloud className="w-8 h-8 text-blue-500" />
-                            <h1 className="text-2xl font-black text-gray-800">苗寶雲端字卡</h1>
+                            <h1 className="text-3xl font-black text-gray-800 tracking-wide">苗寶雲端字卡</h1>
                         </div>
-                        <div className="flex gap-2">
-                            <button onClick={() => setModalState({isOpen: true, type: 'colorSetting'})} className="text-sm font-bold bg-white border border-gray-200 px-4 py-2 rounded-full hover:bg-gray-50 shadow-sm">🎨 顏色設定</button>
-                            {user ? <button onClick={handleLogout} className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-full">登出</button> : <button onClick={handleLogin} className="bg-blue-600 text-white px-5 py-2 rounded-full text-sm font-bold">Google 登入</button>}
-                        </div>
+                        {user ? (
+                            <div className="flex items-center gap-3 bg-white p-2 pr-5 rounded-full shadow-sm border border-gray-200">
+                                <img src={user.photoURL} className="w-9 h-9 rounded-full border border-gray-100" />
+                                <span className="text-sm font-bold text-gray-700">{user.displayName}</span>
+                                <button onClick={handleLogout} className="text-xs text-red-500 hover:text-red-700 ml-2 font-medium">登出</button>
+                            </div>
+                        ) : (
+                            <button onClick={handleLogin} className="bg-blue-600 text-white px-6 py-2.5 rounded-full text-sm font-bold shadow-lg">🔑 登入 Google</button>
+                        )}
                     </div>
 
                     {user && (
                         <div className="w-full max-w-4xl">
+                            {/* 工具列 - 顏色不變 */}
                             <div className="flex flex-wrap justify-center gap-3 mb-8">
-                                <button onClick={() => setModalState({ isOpen: true, type: 'importText' })} className="text-sm bg-white border px-4 py-2 rounded-full text-gray-700 shadow-sm hover:bg-gray-50"><Icons.FileText className="w-4 h-4 inline mr-2" />快速匯入</button>
-                                <button onClick={() => fileInputRef.current.click()} className="text-sm bg-white border px-4 py-2 rounded-full text-gray-700 shadow-sm hover:bg-gray-50"><Icons.Upload className="w-4 h-4 inline mr-2" />匯入備份</button>
-                                <button onClick={handleExport} className="text-sm bg-white border px-4 py-2 rounded-full text-gray-700 shadow-sm hover:bg-gray-50"><Icons.Download className="w-4 h-4 inline mr-2" />匯出備份</button>
+                                <button onClick={() => setModalState({ isOpen: true, type: 'importText' })} className="text-sm bg-white border px-4 py-2 rounded-full flex items-center shadow-sm text-gray-700 hover:bg-gray-50"><Icons.FileText className="w-4 h-4 mr-2" /> 快速匯入</button>
+                                <button onClick={() => fileInputRef.current.click()} className="text-sm bg-white border px-4 py-2 rounded-full flex items-center shadow-sm text-gray-700 hover:bg-gray-50"><Icons.Upload className="w-4 h-4 mr-2" /> 匯入備份</button>
+                                <button onClick={handleExport} className="text-sm bg-white border px-4 py-2 rounded-full flex items-center shadow-sm text-gray-700 hover:bg-gray-50"><Icons.Download className="w-4 h-4 mr-2" /> 匯出備份</button>
                                 <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                             </div>
 
                             {decks.length > 0 && (
                                 <div className="w-full max-w-2xl mx-auto">
-                                    <div className="flex overflow-x-auto custom-scrollbar bg-white p-2 rounded-2xl mb-6 border border-gray-200 gap-2 items-center">
+                                    {/* 卡組選擇 */}
+                                    <div className="flex overflow-x-auto custom-scrollbar bg-white p-2 rounded-2xl mb-6 border border-gray-200 gap-2 items-center shadow-sm">
                                         {decks.map((cat, i) => (
-                                            <button key={i} onClick={() => { setActiveCategoryIndex(i); setCurrentCardIndex(0); setFlipAngle(0); }} className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeCategoryIndex === i ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>{cat.category}</button>
+                                            <button key={i} onClick={() => { setActiveCategoryIndex(i); setCurrentCardIndex(0); setFlipAngle(0); setFilterStatus('all'); }} 
+                                                className={`flex-shrink-0 px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeCategoryIndex === i ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                                {cat.category}
+                                            </button>
                                         ))}
-                                        <button onClick={() => setModalState({ isOpen: true, type: 'addDeck' })} className="px-4 py-2 text-blue-600 font-bold hover:bg-blue-50 rounded-xl"><Icons.Plus className="w-4 h-4" /></button>
+                                        <button onClick={() => setModalState({ isOpen: true, type: 'addDeck' })} className="flex-shrink-0 px-4 py-2 text-blue-600 text-sm font-bold hover:bg-blue-50 rounded-xl flex items-center"><Icons.Plus className="w-4 h-4 mr-1 border-2 border-current rounded-full" /> 新增</button>
                                     </div>
 
-                                    {/* 控制與標題 */}
+                                    {/* 卡組控制列 */}
                                     <div className="flex flex-wrap justify-between items-center mb-4 px-2 gap-3">
-                                        <span className="font-bold text-xl" style={{color: colors.theme}}>{currentCategory.category}</span>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold text-xl" style={{ color: themeColor }}>{currentCategory.category}</span>
+                                            <button onClick={openThemeModal} className="p-2 bg-white border rounded-xl shadow-sm text-gray-500 hover:text-blue-500 transition-colors"><Icons.Palette className="w-4 h-4" /></button>
+                                        </div>
                                         <div className="flex items-center gap-2">
-                                            <select value={filterStatus} onChange={(e) => {setFilterStatus(e.target.value); setCurrentCardIndex(0);}} className="text-sm font-bold px-3 py-2 rounded-xl bg-white border border-gray-200 text-gray-600 shadow-sm">
+                                            <select value={filterStatus} onChange={(e) => {setFilterStatus(e.target.value); setCurrentCardIndex(0);}} className="text-sm font-bold px-3 py-2 rounded-xl bg-white border border-gray-200 text-gray-600 outline-none shadow-sm">
                                                 <option value="all">全部</option>
-                                                <option value="starred">⭐ 已標記星號</option>
+                                                <option value="starred">⭐ 已標記</option>
                                                 <option value="unfamiliar">🔴 不熟</option>
-                                                <option value="familiar">🟡 有印象</option>
+                                                <option value="familiar">🟡 印象</option>
                                                 <option value="mastered">🟢 精熟</option>
                                             </select>
-                                            <button onClick={() => setModalState({isOpen: true, type: 'cardList'})} className="text-sm font-bold px-4 py-2 rounded-xl bg-blue-50 text-blue-600 shadow-sm hover:bg-blue-100"><Icons.List className="w-4 h-4" /></button>
+                                            <button onClick={() => setModalState({isOpen: true, type: 'cardList'})} className="text-sm font-bold px-3 py-2 rounded-xl bg-blue-50 text-blue-600 flex items-center shadow-sm"><Icons.List className="w-4 h-4 mr-1.5" /> 列表</button>
                                         </div>
                                     </div>
 
-                                    {/* 字卡 */}
+                                    {/* 字卡主體 */}
                                     <div className="aspect-[4/3] md:aspect-[16/10] perspective-1000 mb-3 w-full">
-                                        {totalCards > 0 ? (
-                                            <div key={currentCard?.originalIndex} className="relative w-full h-full preserve-3d cursor-pointer" style={{ transform: `rotateY(${flipAngle}deg)`, transition: 'transform 0.5s' }} onClick={handleFlip}>
-                                                {[domFrontFace, domBackFace].map((face, fIdx) => (
-                                                    <div key={fIdx} className={`absolute w-full h-full backface-hidden rounded-3xl shadow-xl flex flex-col items-center justify-center p-8 border-t-[6px] text-center overflow-y-auto ${fIdx === 1 ? 'rotate-y-180' : ''}`} style={{ backgroundColor: face?.theme === 'back' ? '#333' : 'white', borderTopColor: colors.theme }}>
-                                                        <div className="absolute top-5 left-1/2 -translate-x-1/2 text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1 rounded-full border border-gray-100">{currentCardIndex + 1} / {totalCards}</div>
-                                                        <button onClick={toggleStar} className="absolute top-5 left-5 p-2 rounded-full transition-colors hover:bg-yellow-50">
-                                                            <Icons.Star className="w-6 h-6" fill={currentCard.isStarred ? "#fbbf24" : "none"} stroke={currentCard.isStarred ? "#fbbf24" : "#ccc"} />
-                                                        </button>
-                                                        <button onClick={(e) => {e.stopPropagation(); setModalState({ isOpen: true, type: 'deleteCard' });}} className="absolute top-5 right-5 p-2 text-gray-300 hover:text-red-500"><Icons.Trash2 className="w-5 h-5" /></button>
-                                                        <div className={`font-bold whitespace-pre-wrap leading-relaxed w-full px-4 mt-2 ${getTextSizeClass(face?.text)}`} style={{ color: face?.theme === 'back' ? '#fff' : colors.btnAndFont }}>{face?.text}</div>
-                                                        <button onClick={(e) => handleSpeak(e, face?.text)} className="mt-5 p-3 text-gray-300 hover:text-blue-500 rounded-full bg-gray-50/50 transition-colors"><Icons.Volume2 className="w-5 h-5" /></button>
+                                        {totalCards === 0 ? (
+                                            <div className="w-full h-full bg-white rounded-3xl border-2 border-dashed border-gray-300 flex items-center justify-center flex-col shadow-sm">
+                                                <span className="text-gray-500 font-bold mb-4">沒有卡片喔！</span>
+                                                <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} className="bg-blue-600 text-white px-6 py-3 rounded-full font-bold">新增第一張</button>
+                                            </div>
+                                        ) : (
+                                            <div key={currentCard?.originalIndex} className="relative w-full h-full preserve-3d cursor-pointer" style={{ transform: `rotateY(${flipAngle}deg)`, transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} onClick={handleFlip}>
+                                                {[domFrontFace, domBackFace].map((face, faceIdx) => (
+                                                    <div key={faceIdx} className={`absolute w-full h-full backface-hidden rounded-3xl shadow-xl flex flex-col items-center justify-center p-8 text-center overflow-y-auto custom-scrollbar bg-white border-t-[6px] ${faceIdx === 1 ? 'rotate-y-180' : ''}`}
+                                                        style={{ borderColor: themeColor }}>
+                                                        
+                                                        {/* 計數器 (固定顏色) */}
+                                                        <div className="absolute top-5 left-1/2 -translate-x-1/2 text-xs font-black bg-gray-100 text-gray-400 px-4 py-1.5 rounded-full border shadow-sm">
+                                                            {currentCardIndex + 1} / {totalCards}
+                                                        </div>
+
+                                                        {/* 標籤 */}
+                                                        <div className="absolute top-5 left-6 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider text-white" style={{ background: themeColor }}>
+                                                            {face?.label}
+                                                        </div>
+                                                        
+                                                        {/* 右上角操作 */}
+                                                        <div className="absolute top-5 right-5 flex gap-2">
+                                                            <button onClick={handleToggleStar} className={`p-2 rounded-full transition-colors ${currentCard?.isStarred ? 'text-yellow-400 bg-yellow-50' : 'text-gray-300 bg-gray-50'}`}>
+                                                                <Icons.Star className="w-5 h-5" fill={currentCard?.isStarred ? "currentColor" : "none"} />
+                                                            </button>
+                                                            <button onClick={(e) => { e.stopPropagation(); setModalState({ isOpen: true, type: 'deleteCard' }); }} className="p-2 text-gray-300 hover:text-red-500 bg-gray-50 rounded-full transition-colors"><Icons.Trash2 className="w-4 h-4" /></button>
+                                                        </div>
+
+                                                        {/* 主文字 */}
+                                                        <div className="font-bold whitespace-pre-wrap leading-relaxed w-full px-4" style={{ color: cardTextColor, fontSize: `${cardFontSize}px` }}>
+                                                            {face?.text}
+                                                        </div>
+                                                        
+                                                        <button onClick={(e) => handleSpeak(e, face?.text)} className="mt-5 p-3 text-gray-300 hover:text-blue-500 rounded-full transition-colors"><Icons.Volume2 className="w-6 h-6" /></button>
                                                     </div>
                                                 ))}
                                             </div>
-                                        ) : <div className="w-full h-full bg-white rounded-3xl border-2 border-dashed border-gray-200 flex items-center justify-center text-gray-400 font-bold">沒有符合條件的卡片</div>}
+                                        )}
                                     </div>
 
-                                    {/* 下方控制 */}
-                                    <div className="grid grid-cols-3 gap-2 md:gap-4 mb-3">
-                                        <button onClick={(e) => handleRateAndNext(e, 'unfamiliar')} className="py-4 rounded-2xl font-bold text-red-600 shadow-sm" style={{backgroundColor: colors.btnAndFont}}>不熟</button>
-                                        <button onClick={(e) => handleRateAndNext(e, 'familiar')} className="py-4 rounded-2xl font-bold text-yellow-600 shadow-sm" style={{backgroundColor: colors.btnAndFont}}>有印象</button>
-                                        <button onClick={(e) => handleRateAndNext(e, 'mastered')} className="py-4 rounded-2xl font-bold text-green-600 shadow-sm" style={{backgroundColor: colors.btnAndFont}}>精熟</button>
-                                    </div>
-
-                                    <div className="flex items-center justify-center gap-2 w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
-                                        <button onClick={handleFirstCard} className="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center"><Icons.SkipBack className="w-4 h-4"/></button>
-                                        <button onClick={handlePrev} className="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center"><Icons.ChevronLeft className="w-5 h-5"/></button>
-                                        <button onClick={handleShuffle} className="px-4 py-2 bg-gray-800 text-white rounded-full text-sm font-bold flex items-center"><Icons.Shuffle className="w-4 h-4 mr-1" />打亂</button>
-                                        <button onClick={handleRestoreOrder} className="px-4 py-2 bg-gray-500 text-white rounded-full text-sm font-bold flex items-center" title="恢復原本匯入順序"><Icons.RotateCw className="w-4 h-4 mr-1" />恢復順序</button>
-                                        <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} className="px-4 py-2 bg-blue-600 text-white rounded-full text-sm font-bold flex items-center"><Icons.Plus className="w-4 h-4 mr-1" />新增</button>
-                                        <button onClick={openNoteModal} className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold flex items-center"><Icons.FileText className="w-4 h-4" /></button>
-                                        <button onClick={handleNext} className="w-10 h-10 bg-gray-50 text-gray-400 rounded-full flex items-center justify-center"><Icons.ChevronRight className="w-5 h-5"/></button>
-                                    </div>
+                                    {/* 評分按鈕 */}
+                                    {totalCards > 0 && (
+                                        <div className="grid grid-cols-3 gap-2 md:gap-4 w-full mb-3">
+                                            <button onClick={(e) => handleRateAndNext(e, 'unfamiliar')} style={{ background: uiColor }} className="text-red-600 py-3 md:py-4 rounded-2xl font-bold text-sm shadow-sm">不熟</button>
+                                            <button onClick={(e) => handleRateAndNext(e, 'familiar')} style={{ background: uiColor }} className="text-yellow-600 py-3 md:py-4 rounded-2xl font-bold text-sm shadow-sm">有印象</button>
+                                            <button onClick={(e) => handleRateAndNext(e, 'mastered')} style={{ background: uiColor }} className="text-green-600 py-3 md:py-4 rounded-2xl font-bold text-sm shadow-sm">精熟</button>
+                                        </div>
+                                    )}
+                                    
+                                    {/* 底部工具欄 */}
+                                    {totalCards > 0 && (
+                                        <div className="flex items-center justify-center gap-2 md:gap-3 w-full bg-white p-3 rounded-2xl shadow-sm border">
+                                            <button onClick={handlePrev} className="w-10 h-10 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center"><Icons.ChevronLeft className="w-5 h-5"/></button>
+                                            <button onClick={handleShuffle} style={{ background: uiColor }} className="px-4 py-2.5 text-gray-800 rounded-full text-sm font-bold flex items-center"><Icons.Shuffle className="w-4 h-4 mr-1.5" />打亂</button>
+                                            <button onClick={handleRestoreOrder} style={{ background: uiColor }} className="px-4 py-2.5 text-gray-800 rounded-full text-sm font-bold flex items-center"><Icons.RotateCcw className="w-4 h-4 mr-1.5" />還原順序</button>
+                                            <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} className="px-4 py-2.5 bg-blue-600 text-white rounded-full text-sm font-bold flex items-center"><Icons.Plus className="w-4 h-4 mr-1.5" />新增</button>
+                                            <button onClick={openNoteModal} className="px-4 py-2.5 bg-indigo-50 text-indigo-600 rounded-full text-sm font-bold flex items-center"><Icons.FileText className="w-4 h-4 mr-1.5" />備註</button>
+                                            <button onClick={handleNext} className="w-10 h-10 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center"><Icons.ChevronRight className="w-5 h-5"/></button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
                     )}
 
-                    {/* 所有 Modal */}
+                    {/* 所有彈出視窗 */}
                     {modalState.isOpen && (
-                        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-[fadeIn_0.2s]">
-                            <div className={`bg-white rounded-3xl shadow-2xl w-full relative p-8 ${modalState.type === 'cardList' ? 'max-w-4xl' : 'max-w-md'}`}>
-                                <button onClick={closeModal} className="absolute top-6 right-6 text-gray-400 hover:bg-gray-100 p-2 rounded-full"><Icons.X className="w-5 h-5" /></button>
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4">
+                            <div className={`bg-white rounded-3xl shadow-2xl w-full relative transition-all ${modalState.type === 'cardList' ? 'max-w-4xl p-6' : 'max-w-md p-8'}`}>
+                                <button onClick={closeModal} className="absolute top-6 right-6 text-gray-400 hover:bg-gray-100 p-2 rounded-full transition-colors z-10"><Icons.X className="w-5 h-5" /></button>
                                 
-                                {modalState.type === 'colorSetting' && (
+                                {modalState.type === 'theme' && (
                                     <div>
-                                        <h3 className="text-xl font-bold mb-6">🎨 自訂畫面顏色</h3>
-                                        <div className="space-y-6">
-                                            <div>
-                                                <label className="block text-sm font-bold text-gray-600 mb-2">卡組名稱與頂部裝飾線顏色 (#503422)</label>
-                                                <div className="flex gap-3 items-center">
-                                                    <input type="color" value={colors.theme} onChange={(e) => setColors({...colors, theme: e.target.value})} className="w-12 h-12 rounded-lg cursor-pointer"/>
-                                                    <input type="text" value={colors.theme} onChange={(e) => setColors({...colors, theme: e.target.value})} className="flex-1 border p-2 rounded-lg font-mono text-sm uppercase"/>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-bold text-gray-600 mb-2">按鈕背景與卡片字體顏色 (#EBE6E0)</label>
-                                                <div className="flex gap-3 items-center">
-                                                    <input type="color" value={colors.btnAndFont} onChange={(e) => setColors({...colors, btnAndFont: e.target.value})} className="w-12 h-12 rounded-lg cursor-pointer"/>
-                                                    <input type="text" value={colors.btnAndFont} onChange={(e) => setColors({...colors, btnAndFont: e.target.value})} className="flex-1 border p-2 rounded-lg font-mono text-sm uppercase"/>
-                                                </div>
-                                            </div>
+                                        <h3 className="text-xl font-bold mb-6">自訂卡組視覺</h3>
+                                        <div className="space-y-4">
+                                            <div><label className="text-sm font-bold block mb-1">主題色 (卡組名 & 邊框)</label><input type="color" className="w-full h-12 rounded-xl border-none cursor-pointer" value={formData.themeColor} onChange={e => setFormData({...formData, themeColor: e.target.value})} /></div>
+                                            <div><label className="text-sm font-bold block mb-1">UI 按鈕色 (底部背景色)</label><input type="color" className="w-full h-12 rounded-xl border-none cursor-pointer" value={formData.uiColor} onChange={e => setFormData({...formData, uiColor: e.target.value})} /></div>
+                                            <div><label className="text-sm font-bold block mb-1">卡片文字顏色</label><input type="color" className="w-full h-12 rounded-xl border-none cursor-pointer" value={formData.cardTextColor} onChange={e => setFormData({...formData, cardTextColor: e.target.value})} /></div>
+                                            <div><label className="text-sm font-bold block mb-1">卡片文字大小 ({formData.cardFontSize}px)</label><input type="range" min="16" max="60" className="w-full" value={formData.cardFontSize} onChange={e => setFormData({...formData, cardFontSize: e.target.value})} /></div>
                                         </div>
-                                        <button onClick={() => syncToCloud(decks, colors).then(closeModal)} className="w-full mt-8 bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg">儲存並套用</button>
-                                    </div>
-                                )}
-
-                                {modalState.type === 'importText' && (
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4">快速匯入文字</h3>
-                                        <div className="flex gap-2 mb-4">
-                                            <button onClick={() => handleCopyAIPrompt('2sided')} className="flex-1 text-xs font-bold bg-purple-50 text-purple-600 py-2 rounded-xl border border-purple-100">✨ 雙面提示詞</button>
-                                            <button onClick={() => handleCopyAIPrompt('3sided')} className="flex-1 text-xs font-bold bg-emerald-50 text-emerald-600 py-2 rounded-xl border border-emerald-100">✨ 三面提示詞</button>
-                                        </div>
-                                        <textarea rows="8" className="w-full border p-4 rounded-2xl mb-4 text-sm focus:outline-none" value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})} placeholder="請貼上字卡文字內容..."></textarea>
-                                        <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-4 rounded-2xl font-bold">解析並匯入</button>
+                                        <button onClick={handleSaveTheme} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold mt-8 shadow-lg">儲存視覺設定</button>
                                     </div>
                                 )}
 
                                 {modalState.type === 'cardList' && (
-                                    <div className="max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-                                        <h3 className="text-xl font-bold mb-6 flex items-center"><Icons.List className="w-6 h-6 mr-2 text-blue-500" /> {currentCategory?.category} 列表</h3>
-                                        <div className="space-y-3">
+                                    <div className="w-full">
+                                        <h3 className="text-xl font-bold mb-6 flex items-center pr-10" style={{ color: themeColor }}><Icons.List className="w-7 h-7 mr-3" /> {currentCategory?.category}</h3>
+                                        <div className="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-3">
                                             {allCards.map((c, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border gap-3">
+                                                <div key={idx} className="flex flex-col md:flex-row items-center justify-between p-4 rounded-2xl border bg-gray-50 hover:border-blue-300 gap-3">
                                                     <div className="flex-1 truncate font-bold text-gray-800">{c.front}</div>
                                                     <div className="flex items-center gap-2">
-                                                        <select value={c.status} onChange={(e) => handleUpdateCardStatus(idx, e.target.value)} className="text-sm border rounded-lg px-2 py-1">
-                                                            <option value="unrated">⚪ 未評</option>
-                                                            <option value="unfamiliar">🔴 不熟</option>
-                                                            <option value="familiar">🟡 印象</option>
-                                                            <option value="mastered">🟢 精熟</option>
+                                                        <select value={c.status || 'unrated'} onChange={(e) => handleUpdateCardStatus(idx, e.target.value)} className="text-sm font-bold px-2 py-1.5 rounded-lg border bg-white shadow-sm">
+                                                            <option value="unrated">⚪ 未評</option><option value="unfamiliar">🔴 不熟</option><option value="familiar">🟡 印象</option><option value="mastered">🟢 精熟</option>
                                                         </select>
-                                                        <button onClick={() => openEditModal(idx)} className="text-blue-500 p-1"><Icons.Edit className="w-4 h-4" /></button>
-                                                        <button onClick={() => handleDeleteCardFromList(idx)} className="text-gray-400 p-1"><Icons.Trash2 className="w-4 h-4" /></button>
+                                                        <button onClick={() => { closeModal(); openEditModal(idx); }} className="p-1.5 text-blue-500 bg-white border rounded-lg shadow-sm"><Icons.Edit className="w-5 h-5" /></button>
+                                                        <button onClick={() => handleDeleteCardFromList(idx)} className="p-1.5 text-gray-400 bg-white border rounded-lg shadow-sm"><Icons.Trash2 className="w-5 h-5" /></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -388,44 +387,63 @@
                                     </div>
                                 )}
 
-                                {modalState.type === 'addCard' && (
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4">新增字卡</h3>
-                                        <div className="flex gap-4 mb-4 bg-gray-50 p-2 rounded-xl">
-                                            <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold transition-all" onClick={() => setFormData({...formData, cardType: '2sided'})} style={formData.cardType==='2sided'?{backgroundColor:colors.theme, color:'white'}:{}}>雙面</label>
-                                            <label className="flex-1 text-center py-2 rounded-lg cursor-pointer font-bold transition-all" onClick={() => setFormData({...formData, cardType: '3sided'})} style={formData.cardType==='3sided'?{backgroundColor:colors.theme, color:'white'}:{}}>三面</label>
-                                        </div>
-                                        <textarea autoFocus rows="2" className="w-full border p-3 rounded-xl mb-3" placeholder="正面內容" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
-                                        {formData.cardType === '3sided' && <textarea rows="2" className="w-full border p-3 rounded-xl mb-3" placeholder="中間內容" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>}
-                                        <textarea rows="2" className="w-full border p-3 rounded-xl mb-4" placeholder="背面內容" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
-                                        <button onClick={handleAddCard} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold">儲存</button>
-                                    </div>
-                                )}
-                                
-                                {modalState.type === 'editNote' && (
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 flex items-center"><Icons.FileText className="w-6 h-6 mr-2 text-indigo-500" /> 專屬備註</h3>
-                                        <textarea autoFocus rows="8" className="w-full border p-4 rounded-2xl mb-6 focus:border-indigo-500 outline-none" value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})} placeholder="在這裡編輯備註..."></textarea>
-                                        <button onClick={handleSaveNote} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg hover:bg-indigo-700 transition-all">儲存備註</button>
-                                    </div>
-                                )}
-
                                 {modalState.type === 'addDeck' && (
                                     <div>
                                         <h3 className="text-xl font-bold mb-6">建立新卡組</h3>
-                                        <input autoFocus type="text" className="w-full border p-4 rounded-2xl mb-6 focus:border-blue-500 outline-none" placeholder="輸入名稱" value={formData.deckName} onChange={e => setFormData({...formData, deckName: e.target.value})} />
-                                        <button onClick={handleAddDeck} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold">建立</button>
+                                        <input autoFocus type="text" className="w-full border-2 p-4 rounded-2xl mb-6 focus:border-blue-500 outline-none" placeholder="輸入名稱" value={formData.deckName} onChange={e => setFormData({...formData, deckName: e.target.value})} onKeyDown={e => e.key === 'Enter' && handleAddDeck()} />
+                                        <button onClick={handleAddDeck} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg">確認建立</button>
                                     </div>
                                 )}
 
-                                {(modalState.type === 'deleteDeck' || modalState.type === 'deleteCard') && (
-                                    <div className="text-center">
-                                        <div className="bg-red-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-red-500"><Icons.Trash2 className="w-10 h-10" /></div>
-                                        <h3 className="text-2xl font-bold mb-8">確定要刪除嗎？</h3>
-                                        <div className="flex gap-4">
-                                            <button onClick={closeModal} className="flex-1 bg-gray-100 py-4 rounded-2xl font-bold">取消</button>
-                                            <button onClick={modalState.type === 'deleteDeck' ? handleDeleteDeck : handleDeleteCard} className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-bold shadow-lg">刪除</button>
+                                {modalState.type === 'importText' && (
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4">快速匯入文字</h3>
+                                        <div className="flex gap-2 mb-6">
+                                            <button onClick={() => handleCopyAIPrompt('2sided')} className="flex-1 text-xs font-bold bg-purple-50 text-purple-600 py-3 rounded-xl border border-purple-100">✨ 雙面提示詞</button>
+                                            <button onClick={() => handleCopyAIPrompt('3sided')} className="flex-1 text-xs font-bold bg-emerald-50 text-emerald-600 py-3 rounded-xl border border-emerald-100">✨ 三面提示詞</button>
                                         </div>
+                                        <textarea rows="6" className="w-full border-2 p-4 rounded-2xl mb-6 text-sm outline-none resize-none" placeholder="【正面】：Apple\n【背面】：蘋果" value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
+                                        <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-4 rounded-2xl font-bold shadow-lg">開始解析</button>
+                                    </div>
+                                )}
+
+                                {(modalState.type === 'addCard' || modalState.type === 'editCard') && (
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4 pr-10">{modalState.type === 'editCard' ? '編輯字卡' : '新增字卡'}</h3>
+                                        <div className="flex gap-4 mb-5 bg-gray-50 p-3 rounded-2xl">
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={formData.cardType === '2sided'} onChange={() => setFormData({...formData, cardType: '2sided'})} /> <span className="text-sm font-bold">雙面</span></label>
+                                            <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={formData.cardType === '3sided'} onChange={() => setFormData({...formData, cardType: '3sided'})} /> <span className="text-sm font-bold">三面</span></label>
+                                        </div>
+                                        <div className="space-y-3 mb-6">
+                                            <textarea autoFocus rows="2" className="w-full border-2 p-3 rounded-xl outline-none" placeholder="正面" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
+                                            {formData.cardType === '3sided' && <textarea rows="2" className="w-full border-2 p-3 rounded-xl outline-none border-emerald-200" placeholder="中間" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>}
+                                            <textarea rows="2" className="w-full border-2 p-3 rounded-xl outline-none" placeholder="背面" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
+                                        </div>
+                                        <button onClick={modalState.type === 'editCard' ? handleEditCardSave : handleAddCard} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg">儲存設定</button>
+                                    </div>
+                                )}
+
+                                {modalState.type === 'editNote' && (
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4 flex items-center pr-10"><Icons.FileText className="w-6 h-6 mr-2 text-indigo-500" /> 備註內容</h3>
+                                        <textarea autoFocus rows="6" className="w-full border-2 p-4 rounded-2xl mb-6 text-base outline-none resize-none" placeholder="輸入備註..." value={formData.note} onChange={e => setFormData({...formData, note: e.target.value})}></textarea>
+                                        <button onClick={handleSaveNote} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg">儲存備註</button>
+                                    </div>
+                                )}
+                                
+                                {modalState.type === 'deleteDeck' && (
+                                    <div className="text-center">
+                                        <Icons.Trash2 className="w-16 h-16 text-red-500 mx-auto mb-6" />
+                                        <h3 className="text-2xl font-bold mb-8">確定要刪除卡組嗎？</h3>
+                                        <div className="flex gap-4"><button onClick={closeModal} className="flex-1 bg-gray-100 py-4 rounded-2xl font-bold">取消</button><button onClick={handleDeleteDeck} className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-bold">確定刪除</button></div>
+                                    </div>
+                                )}
+                                
+                                {modalState.type === 'deleteCard' && (
+                                    <div className="text-center">
+                                        <Icons.Trash2 className="w-16 h-16 text-red-500 mx-auto mb-6" />
+                                        <h3 className="text-2xl font-bold mb-8">確定刪除這張字卡嗎？</h3>
+                                        <div className="flex gap-4"><button onClick={closeModal} className="flex-1 bg-gray-100 py-4 rounded-2xl font-bold">取消</button><button onClick={handleDeleteCard} className="flex-1 bg-red-500 text-white py-4 rounded-2xl font-bold">確定刪除</button></div>
                                     </div>
                                 )}
                             </div>
