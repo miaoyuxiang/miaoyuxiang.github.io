@@ -86,7 +86,15 @@
                 if (!user) return;
                 const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
                     if (docSnap.exists()) {
-                        setDecks(docSnap.data().decks || []);
+                        const data = docSnap.data();
+                        setDecks(data.decks || []);
+                        
+                        // 讀取外觀設定
+                        if (data.settings) {
+                            setButtonColor(data.settings.buttonColor || '#EBE6E0');
+                            setCardTextColor(data.settings.cardTextColor || '#333333');
+                            setCardTextSize(data.settings.cardTextSize || '36');
+                        }
                     }
                 });
                 return () => unsub();
@@ -94,7 +102,7 @@
 
             const syncToCloud = async (newDecks) => {
                 if (!user) return;
-                await setDoc(doc(db, "users", user.uid), { decks: newDecks });
+                await setDoc(doc(db, "users", user.uid), { decks: newDecks }, { merge: true });
             };
 
             const updateDecks = (newDecks) => {
@@ -481,6 +489,15 @@
             };
 
             const closeModal = () => {
+                // 如果是設定視窗關閉，同步設定到雲端
+                if (modalState.type === 'settings') {
+                    if (user) {
+                        setDoc(doc(db, "users", user.uid), {
+                            settings: { buttonColor, cardTextColor, cardTextSize }
+                        }, { merge: true }).catch(console.error);
+                    }
+                }
+                
                 setModalState({ isOpen: false, type: null });
                 setFormData(prev => ({ ...prev, deckName: '', deckColor: '#503422', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', newDeckName: '', editIndex: null }));
                 setSelectedCards(new Set()); 
@@ -1024,7 +1041,7 @@
                                             </React.Fragment>
                                         )}
                                         
-                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(三面)：\n【正面】：ねこ\n【中間】：貓\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
+                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(三面)：\n【正面】：猫\n【中間】：ねこ\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
                                         <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-4 rounded-2xl font-bold hover:bg-black transition-colors shadow-lg">解析並同步至雲端</button>
                                     </div>
                                 )}
@@ -1047,8 +1064,8 @@
                                         <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2 mb-4">
                                             {formData.cardType === '3sided' ? (
                                                 <React.Fragment>
-                                                    <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="正面內容 (如：ねこ)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
-                                                    <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="中間內容 (如：貓)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
+                                                    <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="正面內容 (如：猫)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
+                                                    <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="中間內容 (如：ねこ)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
                                                     <textarea rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-yellow-400 focus:bg-white outline-none resize-none transition-colors" placeholder="背面內容 (如：貓咪)" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
                                                 </React.Fragment>
                                             ) : (
