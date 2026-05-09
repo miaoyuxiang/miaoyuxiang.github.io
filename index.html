@@ -245,7 +245,8 @@
 
                 if (decks.length === 0 || formData.importMode === 'new') {
                     const newName = formData.newDeckName.trim() || "新匯入卡組";
-                    const newDecks = [...decks, { category: newName, color: '#503422', cards: cards }];
+                    // 將顏色套用 formData.deckColor，如果沒有則預設 #503422
+                    const newDecks = [...decks, { category: newName, color: formData.deckColor || '#503422', cards: cards }];
                     updateDecks(newDecks);
                     setActiveCategoryIndex(newDecks.length - 1);
                     setCurrentCardIndex(0);
@@ -1009,10 +1010,21 @@
                                         )}
 
                                         {(decks.length === 0 || formData.importMode === 'new') && (
-                                            <input autoFocus type="text" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-4 focus:border-blue-500 focus:bg-white outline-none text-sm transition-colors" placeholder="輸入新卡組名稱 (未輸入預設為：新匯入卡組)" value={formData.newDeckName} onChange={e => setFormData({...formData, newDeckName: e.target.value})} />
+                                            <React.Fragment>
+                                                <input autoFocus type="text" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-4 focus:border-blue-500 focus:bg-white outline-none text-sm transition-colors" placeholder="輸入新卡組名稱 (未輸入預設為：新匯入卡組)" value={formData.newDeckName} onChange={e => setFormData({...formData, newDeckName: e.target.value})} />
+                                                <div className="flex items-center gap-3 mb-6 bg-gray-50 p-4 rounded-2xl border-2 border-gray-100">
+                                                    <label className="text-sm font-bold text-gray-700">選擇卡組專屬顏色：</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="relative w-8 h-8 rounded-full overflow-hidden border border-gray-300 shadow-sm shrink-0">
+                                                            <input type="color" value={formData.deckColor} onChange={e => setFormData({...formData, deckColor: e.target.value})} className="absolute inset-[-10px] w-12 h-12 cursor-pointer" />
+                                                        </div>
+                                                        <input type="text" value={formData.deckColor} onChange={e => setFormData({...formData, deckColor: e.target.value})} className="w-20 text-sm font-mono uppercase bg-white border border-gray-300 rounded px-2 py-1 text-gray-700 outline-none focus:border-blue-500" placeholder="#HEX" maxLength="7" title="輸入16進位色號" />
+                                                    </div>
+                                                </div>
+                                            </React.Fragment>
                                         )}
                                         
-                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(三面)：\n【正面】：猫\n【中間】：ねこ\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
+                                        <textarea rows="6" className="w-full border-2 border-gray-100 bg-gray-50 p-4 rounded-2xl mb-6 text-sm focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder={"格式一(雙面)：\n【正面】：Apple\n【背面】：蘋果\n\n格式二(三面)：\n【正面】：ねこ\n【中間】：貓\n【背面】：貓咪"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
                                         <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-4 rounded-2xl font-bold hover:bg-black transition-colors shadow-lg">解析並同步至雲端</button>
                                     </div>
                                 )}
@@ -1035,8 +1047,8 @@
                                         <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-2 mb-4">
                                             {formData.cardType === '3sided' ? (
                                                 <React.Fragment>
-                                                    <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="正面內容 (如：猫)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
-                                                    <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="中間內容 (如：ねこ)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
+                                                    <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="正面內容 (如：ねこ)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
+                                                    <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="中間內容 (如：貓)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
                                                     <textarea rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-yellow-400 focus:bg-white outline-none resize-none transition-colors" placeholder="背面內容 (如：貓咪)" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
                                                 </React.Fragment>
                                             ) : (
