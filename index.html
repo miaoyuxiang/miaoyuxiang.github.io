@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>苗寶雲端字卡系統 (日文三面版)</title>
+    <title>苗寶雲端字卡系統 (三面版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -168,7 +168,7 @@
                 event.target.value = null; 
             };
 
-            // 快速匯入文字 (支援假名格式)
+            // 快速匯入文字 (支援三面格式)
             const handleTextImport = () => {
                 if (!formData.importText.trim()) return;
                 const cards = [];
@@ -219,7 +219,7 @@
                 setTimeout(() => alert(`🎉 成功匯入 ${cards.length} 張字卡，並已同步至雲端！`), 100);
             };
 
-            // 翻轉角度增加 180 度
+            // 翻轉角度永遠增加 180 度，維持同向翻轉
             const handleFlip = () => totalCards > 0 && setFlipAngle(prev => prev + 180);
 
             const handleFirstCard = () => {
@@ -315,16 +315,16 @@
                 setFormData(prev => ({ ...prev, deckName: '', cardFront: '', cardMiddle: '', cardBack: '', importText: '', newDeckName: '' }));
             };
 
-            // ====== 動態多面翻轉引擎邏輯 ======
+            // ====== 動態多面翻轉引擎邏輯 (修復閃爍與倒帶現象) ======
             
             // 決定這張卡片有幾面
             const faces = React.useMemo(() => {
                 if (!currentCard) return [];
                 if (currentCard.middle) {
                     return [
-                        { label: '漢字', text: currentCard.front, theme: 'front' },
-                        { label: '假名', text: currentCard.middle, theme: 'middle' },
-                        { label: '中文', text: currentCard.back, theme: 'back' }
+                        { label: '正面', text: currentCard.front, theme: 'front' },
+                        { label: '中間', text: currentCard.middle, theme: 'middle' },
+                        { label: '背面', text: currentCard.back, theme: 'back' }
                     ];
                 }
                 return [
@@ -334,17 +334,15 @@
             }, [currentCard]);
 
             const totalFaces = faces.length;
-            const steps = Math.floor(flipAngle / 180);
+            const targetStep = Math.floor(flipAngle / 180);
             
-            // 計算目前與下一次應該顯示哪一面
-            const currentFaceIdx = totalFaces > 0 ? steps % totalFaces : 0;
-            const nextFaceIdx = totalFaces > 0 ? (steps + 1) % totalFaces : 0;
+            // 【核心修復】為了確保「同一個方向」的順暢視覺，我們必須鎖定正在轉走的畫面，只更新即將翻出來的那一面。
+            // 這樣文字就不會在旋轉的瞬間突然跳掉，破壞翻轉的物理錯覺。
+            const frontStep = targetStep % 2 === 0 ? targetStep : targetStep - 1;
+            const backStep = targetStep % 2 === 1 ? targetStep : Math.max(0, targetStep - 1);
 
-            // 判斷當前物理 DOM 是看到正面還是背面
-            const isDomFrontVisible = steps % 2 === 0;
-
-            const domFrontFace = isDomFrontVisible ? faces[currentFaceIdx] : faces[nextFaceIdx];
-            const domBackFace = isDomFrontVisible ? faces[nextFaceIdx] : faces[currentFaceIdx];
+            const domFrontFace = totalFaces > 0 ? faces[frontStep % totalFaces] : null;
+            const domBackFace = totalFaces > 0 ? faces[backStep % totalFaces] : null;
 
             // 顏色主題產生器
             const getFaceClasses = (theme) => {
@@ -471,7 +469,8 @@
                                                 )}
                                             </div>
                                         ) : (
-                                            <div className="relative w-full h-full preserve-3d cursor-pointer" style={{ transform: `rotateY(${flipAngle}deg)`, transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} onClick={handleFlip}>
+                                            // 【重要】：加上 key 屬性，當切換不同單字時重新生成 DOM，徹底解決切換卡片時的「倒帶」旋轉現象
+                                            <div key={currentCard?.originalIndex} className="relative w-full h-full preserve-3d cursor-pointer" style={{ transform: `rotateY(${flipAngle}deg)`, transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }} onClick={handleFlip}>
                                                 
                                                 {/* DOM Front */}
                                                 <div className={`absolute w-full h-full backface-hidden rounded-3xl shadow-xl flex flex-col items-center justify-center p-8 border-t-[6px] text-center overflow-y-auto custom-scrollbar ${frontTheme.bg} ${frontTheme.border}`}>
@@ -490,7 +489,7 @@
                                                         {domFrontFace?.text}
                                                     </div>
                                                     <div className={`absolute bottom-5 text-xs flex items-center font-bold px-3 py-1 rounded-full ${frontTheme.badgeText} ${frontTheme.badgeBg}`}>
-                                                        點擊翻轉 <Icons.RotateCcw className="w-3 h-3 ml-1.5" />
+                                                        點擊持續翻轉 <Icons.RotateCcw className="w-3 h-3 ml-1.5" />
                                                     </div>
                                                 </div>
                                                 
@@ -511,7 +510,7 @@
                                                         {domBackFace?.text}
                                                     </div>
                                                     <div className={`absolute bottom-5 text-xs flex items-center font-bold px-3 py-1 rounded-full ${backTheme.badgeText} ${backTheme.badgeBg}`}>
-                                                        點擊翻轉 <Icons.RotateCcw className="w-3 h-3 ml-1.5" />
+                                                        點擊持續翻轉 <Icons.RotateCcw className="w-3 h-3 ml-1.5" />
                                                     </div>
                                                 </div>
 
@@ -602,15 +601,15 @@
                                             </label>
                                             <label className="flex items-center gap-2 cursor-pointer">
                                                 <input type="radio" checked={formData.cardType === '3sided'} onChange={() => setFormData({...formData, cardType: '3sided'})} className="text-blue-600 focus:ring-blue-500 w-4 h-4" />
-                                                <span className="text-sm font-bold text-gray-700">三面字卡 (日文模式)</span>
+                                                <span className="text-sm font-bold text-gray-700">三面字卡</span>
                                             </label>
                                         </div>
 
                                         {formData.cardType === '3sided' ? (
                                             <React.Fragment>
-                                                <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="漢字 (如：猫)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
-                                                <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="假名 (如：ねこ)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
-                                                <textarea rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-5 focus:border-yellow-400 focus:bg-white outline-none resize-none transition-colors" placeholder="中文 (如：貓咪)" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
+                                                <textarea autoFocus rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 focus:bg-white outline-none resize-none transition-colors" placeholder="正面內容 (如：猫)" value={formData.cardFront} onChange={e => setFormData({...formData, cardFront: e.target.value})}></textarea>
+                                                <textarea rows="2" className="w-full border-2 border-gray-100 bg-emerald-50 p-3 rounded-xl mb-3 focus:border-emerald-500 focus:bg-white outline-none resize-none transition-colors" placeholder="中間內容 (如：ねこ)" value={formData.cardMiddle} onChange={e => setFormData({...formData, cardMiddle: e.target.value})}></textarea>
+                                                <textarea rows="2" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-5 focus:border-yellow-400 focus:bg-white outline-none resize-none transition-colors" placeholder="背面內容 (如：貓咪)" value={formData.cardBack} onChange={e => setFormData({...formData, cardBack: e.target.value})}></textarea>
                                             </React.Fragment>
                                         ) : (
                                             <React.Fragment>
