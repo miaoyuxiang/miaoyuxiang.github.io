@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>苗寶雲端字卡系統 (終極總覽版)</title>
+    <title>苗寶雲端字卡系統 (防彈穩定版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -15,7 +15,7 @@
     <script type="text/babel" data-type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBMqOn8ihqPxWP7L1rKMMH07t8Y8QSX_Zs",
@@ -31,9 +31,6 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-
-        // 確保強制保持登入狀態
-        setPersistence(auth, browserLocalPersistence).catch(console.error);
 
         const Icons = {
             PlusCircle: () => <svg xmlns="http://www.w3.org/2000/svg" className="w-16 h-16 text-blue-300 mx-auto mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>,
@@ -60,18 +57,17 @@
             const [currentCardIndex, setCurrentCardIndex] = React.useState(0);
             
             // 視圖模式 (卡片或列表)
-            const [viewMode, setViewMode] = React.useState('card'); // 'card' | 'list'
-            const [selectedCards, setSelectedCards] = React.useState([]); // 儲存選取刪除的 originalIndex
+            const [viewMode, setViewMode] = React.useState('card'); 
+            const [selectedCards, setSelectedCards] = React.useState([]); 
             
             const [filterStatus, setFilterStatus] = React.useState('all'); 
             const [order2Sided, setOrder2Sided] = React.useState('FB'); 
-            const [order3Sided, setOrder3Sided] = React.useState('BMF'); // 預設：中 ➔ 假 ➔ 漢 (B->M->F)
+            const [order3Sided, setOrder3Sided] = React.useState('BMF'); // 預設：中 ➔ 假 ➔ 漢
 
             const [modalState, setModalState] = React.useState({ isOpen: false, type: null });
             const [flipAngle, setFlipAngle] = React.useState(0);
             const [formData, setFormData] = React.useState({ deckName: '', cardFront: '', cardMiddle: '', cardBack: '', importText: '', importMode: 'append', newDeckName: '', cardType: '3sided' });
             
-            // 備註的 Local State (避免每打一個字就寫入資料庫)
             const [localNote, setLocalNote] = React.useState('');
 
             const fileInputRef = React.useRef(null);
@@ -88,7 +84,11 @@
                 if (!user) return;
                 const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
                     if (docSnap.exists()) {
-                        setDecks(docSnap.data().decks || []);
+                        const fetchedDecks = docSnap.data().decks;
+                        // 【防彈機制 1】確保讀下來的一定是陣列
+                        setDecks(Array.isArray(fetchedDecks) ? fetchedDecks : []);
+                    } else {
+                        setDecks([]);
                     }
                 });
                 return () => unsub();
@@ -107,8 +107,9 @@
             const handleLogin = () => signInWithPopup(auth, provider);
             const handleLogout = () => signOut(auth);
 
+            // 【防彈機制 2】確保就算超出索引或缺資料也不會出錯
             const currentCategory = decks[activeCategoryIndex] || null;
-            const allCards = currentCategory?.cards || [];
+            const allCards = Array.isArray(currentCategory?.cards) ? currentCategory.cards.filter(c => c) : [];
             const currentCardsWithIdx = allCards.map((c, idx) => ({ ...c, originalIndex: idx }));
             
             const currentCards = currentCardsWithIdx.filter(c => {
@@ -122,21 +123,21 @@
             const currentCard = currentCards[safeCardIndex] || null;
             const totalCards = currentCards.length;
 
-            // 當切換卡片時，更新本地備註框
             React.useEffect(() => {
                 setLocalNote(currentCard?.note || '');
             }, [currentCard?.originalIndex]);
 
-            // 儲存備註功能
             const saveNote = (originalIdx, newNoteVal) => {
                 const newDecks = [...decks];
-                if (newDecks[activeCategoryIndex].cards[originalIdx].note !== newNoteVal) {
-                    newDecks[activeCategoryIndex].cards[originalIdx].note = newNoteVal;
-                    updateDecks(newDecks);
+                // 【防彈機制 3】確保寫入時資料結構存在
+                if (newDecks[activeCategoryIndex]?.cards?.[originalIdx]) {
+                    if (newDecks[activeCategoryIndex].cards[originalIdx].note !== newNoteVal) {
+                        newDecks[activeCategoryIndex].cards[originalIdx].note = newNoteVal;
+                        updateDecks(newDecks);
+                    }
                 }
             };
 
-            // 快捷鍵控制
             React.useEffect(() => {
                 const handleKeyDown = (e) => {
                     if (modalState.isOpen || !user || viewMode === 'list') return;
@@ -197,7 +198,7 @@
                     switchCategory(newDecks.length - 1);
                 } else {
                     const newDecks = [...decks];
-                    newDecks[activeCategoryIndex].cards = [...newDecks[activeCategoryIndex].cards, ...cards];
+                    newDecks[activeCategoryIndex].cards = [...(newDecks[activeCategoryIndex].cards || []), ...cards];
                     updateDecks(newDecks);
                 }
                 closeModal();
@@ -212,12 +213,11 @@
                 setSelectedCards([]);
             };
 
-            // 確保翻轉都是正數累加 (同一個方向轉)
             const handleFlip = () => totalCards > 0 && setFlipAngle(prev => prev + 180);
 
             const handleFirstCard = () => {
                 if (totalCards <= 1 || safeCardIndex === 0) return;
-                setFlipAngle(prev => prev % 360 === 0 ? prev : prev + 180); // 確保轉回正面
+                setFlipAngle(prev => prev % 360 === 0 ? prev : prev + 180); 
                 setTimeout(() => setCurrentCardIndex(0), 100);
             };
 
@@ -251,8 +251,10 @@
                 setTimeout(() => {
                     const newDecks = [...decks];
                     const originalIdx = currentCard.originalIndex;
-                    newDecks[activeCategoryIndex].cards[originalIdx].status = status;
-                    updateDecks(newDecks);
+                    if (newDecks[activeCategoryIndex]?.cards?.[originalIdx]) {
+                        newDecks[activeCategoryIndex].cards[originalIdx].status = status;
+                        updateDecks(newDecks);
+                    }
                     
                     if (filterStatus === 'all' || status === filterStatus || (filterStatus === 'forgot' && status === 'unrated')) {
                         setCurrentCardIndex(prev => (prev + 1) % totalCards);
@@ -260,31 +262,67 @@
                 }, 150);
             };
 
-            // 列表模式：更改狀態
             const handleListStatusChange = (originalIdx, newStatus) => {
                 const newDecks = [...decks];
-                newDecks[activeCategoryIndex].cards[originalIdx].status = newStatus;
-                updateDecks(newDecks);
+                if (newDecks[activeCategoryIndex]?.cards?.[originalIdx]) {
+                    newDecks[activeCategoryIndex].cards[originalIdx].status = newStatus;
+                    updateDecks(newDecks);
+                }
             };
 
-            // 列表模式：勾選
             const toggleSelection = (idx) => {
                 setSelectedCards(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
             };
+            
             const toggleAllSelection = (e) => {
                 if (e.target.checked) setSelectedCards(currentCards.map(c => c.originalIndex));
                 else setSelectedCards([]);
             };
 
-            // 列表模式：批次刪除
             const handleBulkDelete = () => {
                 if(selectedCards.length === 0) return;
                 if(!window.confirm(`確定要刪除選取的 ${selectedCards.length} 張卡片嗎？`)) return;
                 const newDecks = [...decks];
-                newDecks[activeCategoryIndex].cards = newDecks[activeCategoryIndex].cards.filter((_, idx) => !selectedCards.includes(idx));
-                updateDecks(newDecks);
+                if (newDecks[activeCategoryIndex]) {
+                    newDecks[activeCategoryIndex].cards = newDecks[activeCategoryIndex].cards.filter((_, idx) => !selectedCards.includes(idx));
+                    updateDecks(newDecks);
+                }
                 setSelectedCards([]);
                 setCurrentCardIndex(0);
+            };
+
+            const handleExport = () => {
+                if (decks.length === 0) return;
+                const dataStr = JSON.stringify(decks, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `flashcards_cloud_backup.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+
+            const handleFileChange = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (Array.isArray(importedData)) {
+                            if (window.confirm("確定要覆蓋目前雲端資料嗎？操作無法復原。")) {
+                                updateDecks(importedData);
+                                switchCategory(0);
+                            }
+                        }
+                    } catch (error) {
+                        alert("讀取失敗，檔案格式錯誤");
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = null; 
             };
 
             const handleAddDeck = () => {
@@ -301,10 +339,13 @@
                 const newCard = { front: formData.cardFront, back: formData.cardBack, status: 'unrated', note: '' };
                 if (formData.cardType === '3sided' && formData.cardMiddle.trim()) newCard.middle = formData.cardMiddle;
 
-                newDecks[activeCategoryIndex].cards.push(newCard);
-                updateDecks(newDecks);
-                if (filterStatus !== 'all') setFilterStatus('all');
-                setCurrentCardIndex(newDecks[activeCategoryIndex].cards.length - 1);
+                if (newDecks[activeCategoryIndex]) {
+                    if (!newDecks[activeCategoryIndex].cards) newDecks[activeCategoryIndex].cards = [];
+                    newDecks[activeCategoryIndex].cards.push(newCard);
+                    updateDecks(newDecks);
+                    if (filterStatus !== 'all') setFilterStatus('all');
+                    setCurrentCardIndex(newDecks[activeCategoryIndex].cards.length - 1);
+                }
                 closeModal();
             };
 
@@ -317,8 +358,10 @@
 
             const handleDeleteCard = (originalIdxToDel) => {
                 const newDecks = [...decks];
-                newDecks[activeCategoryIndex].cards.splice(originalIdxToDel, 1);
-                updateDecks(newDecks);
+                if (newDecks[activeCategoryIndex]?.cards) {
+                    newDecks[activeCategoryIndex].cards.splice(originalIdxToDel, 1);
+                    updateDecks(newDecks);
+                }
                 if(viewMode === 'card') setCurrentCardIndex(Math.max(0, safeCardIndex - 1));
                 closeModal();
             };
@@ -328,7 +371,6 @@
                 setFormData(prev => ({ ...prev, deckName: '', cardFront: '', cardMiddle: '', cardBack: '', importText: '', newDeckName: '' }));
             };
             
-            // 多面翻轉邏輯計算
             const faces = React.useMemo(() => {
                 if (!currentCard) return [];
                 const faceF = { id: 'F', label: currentCard.middle ? '漢字' : '正面', text: currentCard.front, theme: 'front' };
@@ -361,7 +403,7 @@
                 if (theme === 'front') return { bg: 'bg-white', border: 'border-blue-500', text: 'text-gray-800', badgeText: 'text-blue-500', badgeBg: 'bg-blue-50' };
                 if (theme === 'middle') return { bg: 'bg-emerald-50', border: 'border-emerald-500', text: 'text-emerald-900', badgeText: 'text-emerald-600', badgeBg: 'bg-emerald-100' };
                 if (theme === 'back') return { bg: 'bg-gray-800', border: 'border-yellow-400', text: 'text-white', badgeText: 'text-yellow-400', badgeBg: 'bg-gray-700' };
-                return {};
+                return { bg: 'bg-white', border: 'border-transparent', text: 'text-transparent', badgeText: 'text-transparent', badgeBg: 'bg-transparent' };
             };
 
             const frontTheme = getFaceClasses(domFrontFace?.theme);
@@ -414,14 +456,14 @@
                         <div className="w-full max-w-5xl">
                             {/* 工具列 */}
                             <div className="flex flex-wrap justify-between items-center gap-3 mb-6 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                                <div className="flex gap-2">
-                                    <button onClick={() => setViewMode('card')} className={`px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${viewMode === 'card' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Icons.CreditCard className="w-4 h-4"/> 卡片模式</button>
-                                    <button onClick={() => setViewMode('list')} className={`px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Icons.List className="w-4 h-4"/> 列表總覽</button>
+                                <div className="flex gap-2 w-full md:w-auto">
+                                    <button onClick={() => setViewMode('card')} className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'card' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Icons.CreditCard className="w-4 h-4"/> 卡片模式</button>
+                                    <button onClick={() => setViewMode('list')} className={`flex-1 md:flex-none px-5 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'list' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}><Icons.List className="w-4 h-4"/> 列表總覽</button>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => setModalState({ isOpen: true, type: 'importText' })} className="text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.FileText className="w-4 h-4 mr-1.5" /> 匯入文字</button>
-                                    <button onClick={() => fileInputRef.current.click()} className="text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.Upload className="w-4 h-4 mr-1.5" /> 覆蓋備份</button>
-                                    <button onClick={handleExport} className="text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.Download className="w-4 h-4 mr-1.5" /> 匯出 JSON</button>
+                                <div className="flex gap-2 w-full md:w-auto overflow-x-auto custom-scrollbar pb-1 md:pb-0">
+                                    <button onClick={() => setModalState({ isOpen: true, type: 'importText' })} className="whitespace-nowrap text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.FileText className="w-4 h-4 mr-1.5" /> 匯入文字</button>
+                                    <button onClick={() => fileInputRef.current.click()} className="whitespace-nowrap text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.Upload className="w-4 h-4 mr-1.5" /> 覆蓋備份</button>
+                                    <button onClick={handleExport} className="whitespace-nowrap text-sm bg-gray-50 border border-gray-200 px-4 py-2 rounded-xl hover:bg-gray-100 transition-colors flex items-center font-bold text-gray-600"><Icons.Download className="w-4 h-4 mr-1.5" /> 匯出 JSON</button>
                                     <input type="file" accept=".json" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                                 </div>
                             </div>
@@ -458,7 +500,7 @@
                                     {viewMode === 'list' ? (
                                         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                                             <div className="p-5 border-b border-gray-100 flex flex-wrap justify-between items-center bg-gray-50 gap-4">
-                                                <h2 className="text-xl font-black text-gray-800">{currentCategory.category} <span className="text-gray-500 font-medium text-sm ml-2">共 {currentCards.length} 張</span></h2>
+                                                <h2 className="text-xl font-black text-gray-800">{currentCategory?.category || '未命名卡組'} <span className="text-gray-500 font-medium text-sm ml-2">共 {currentCards.length} 張</span></h2>
                                                 <div className="flex gap-2">
                                                     <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 flex items-center"><Icons.Plus className="w-4 h-4 mr-1"/> 新增</button>
                                                     {selectedCards.length > 0 && <button onClick={handleBulkDelete} className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold border border-red-200 hover:bg-red-100">批次刪除 ({selectedCards.length})</button>}
@@ -506,7 +548,7 @@
                                         /* ====== 卡片模式 ====== */
                                         <div className="w-full max-w-2xl mx-auto">
                                             <div className="flex justify-between items-center mb-4 px-2">
-                                                <div className="flex items-center gap-3"><span className="font-bold text-gray-800 text-xl">{currentCategory.category}</span><span className="text-gray-400 font-bold text-sm bg-gray-100 px-3 py-1 rounded-full">{totalCards > 0 ? safeCardIndex + 1 : 0} / {totalCards}</span></div>
+                                                <div className="flex items-center gap-3"><span className="font-bold text-gray-800 text-xl">{currentCategory?.category || '未命名卡組'}</span><span className="text-gray-400 font-bold text-sm bg-gray-100 px-3 py-1 rounded-full">{totalCards > 0 ? safeCardIndex + 1 : 0} / {totalCards}</span></div>
                                             </div>
 
                                             <div className="aspect-[4/3] md:aspect-[16/10] perspective-1000 mb-6">
@@ -541,7 +583,7 @@
                                                 <div className="bg-white p-4 md:p-6 rounded-3xl shadow-sm border border-gray-100 mb-8 space-y-5 w-full">
                                                     {/* 備註區 */}
                                                     <div className="bg-yellow-50 rounded-2xl p-4 border border-yellow-100 flex flex-col">
-                                                        <span className="text-xs font-bold text-yellow-700 mb-2">專屬備註 (點擊下方修改，自動儲存)</span>
+                                                        <span className="text-xs font-bold text-yellow-700 mb-2">專屬備註 (點擊下方輸入，自動儲存)</span>
                                                         <textarea rows="2" placeholder="記不住？在這裡寫下你的聯想或諧音記憶法吧..." className="w-full bg-transparent border-none outline-none resize-none text-sm text-gray-800 font-medium placeholder-yellow-600/40" value={localNote} onChange={e => setLocalNote(e.target.value)} onBlur={e => saveNote(currentCard.originalIndex, e.target.value)}></textarea>
                                                     </div>
 
@@ -585,12 +627,12 @@
                                         </div>
                                         {decks.length > 0 && (
                                             <div className="flex gap-6 mb-4 bg-gray-50 p-3 rounded-2xl">
-                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={formData.importMode === 'append'} onChange={() => setFormData({...formData, importMode: 'append'})} className="w-4 h-4"/><span className="text-sm font-bold text-gray-700">加入「{currentCategory?.category}」</span></label>
+                                                <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={formData.importMode === 'append'} onChange={() => setFormData({...formData, importMode: 'append'})} className="w-4 h-4"/><span className="text-sm font-bold text-gray-700">加入「{currentCategory?.category || ''}」</span></label>
                                                 <label className="flex items-center gap-2 cursor-pointer"><input type="radio" checked={formData.importMode === 'new'} onChange={() => setFormData({...formData, importMode: 'new'})} className="w-4 h-4"/><span className="text-sm font-bold text-gray-700">建立新分類</span></label>
                                             </div>
                                         )}
                                         {(decks.length === 0 || formData.importMode === 'new') && <input type="text" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-3 focus:border-blue-500 outline-none text-sm" placeholder="輸入新分類名稱 (未輸入預設為：新匯入卡組)" value={formData.newDeckName} onChange={e => setFormData({...formData, newDeckName: e.target.value})} />}
-                                        <textarea rows="5" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-4 text-sm focus:border-blue-500 outline-none resize-none" placeholder="貼上文字，例如：\n【中文】：蘋果\n【漢字】：林檎\n【假名】：りんご" value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
+                                        <textarea rows="5" className="w-full border-2 border-gray-100 bg-gray-50 p-3 rounded-xl mb-4 text-sm focus:border-blue-500 outline-none resize-none" placeholder={"請貼上字卡內容，每張之間空一行：\n\n【中文】：蘋果\n【漢字】：林檎\n【假名】：りんご"} value={formData.importText} onChange={e => setFormData({...formData, importText: e.target.value})}></textarea>
                                         <button onClick={handleTextImport} className="w-full bg-gray-800 text-white py-3.5 rounded-2xl font-bold hover:bg-black shadow-lg">解析並同步至雲端</button>
                                     </div>
                                 )}
