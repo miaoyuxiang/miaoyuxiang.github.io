@@ -74,6 +74,12 @@
             
             const fileInputRef = React.useRef(null);
             
+            // 使用 ref 追蹤 modalState，避免在編輯設定時被 snapshot 洗掉未儲存的設定
+            const modalRef = React.useRef(modalState);
+            React.useEffect(() => {
+                modalRef.current = modalState;
+            }, [modalState]);
+            
             React.useEffect(() => {
                 const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
                     setUser(currentUser);
@@ -89,8 +95,8 @@
                         const data = docSnap.data();
                         setDecks(data.decks || []);
                         
-                        // 讀取外觀設定
-                        if (data.settings) {
+                        // 讀取外觀設定（僅在非設定畫面時，防止編輯中被覆寫）
+                        if (data.settings && modalRef.current.type !== 'settings') {
                             setButtonColor(data.settings.buttonColor || '#EBE6E0');
                             setCardTextColor(data.settings.cardTextColor || '#333333');
                             setCardTextSize(data.settings.cardTextSize || '36');
@@ -152,7 +158,6 @@
                 window.addEventListener('keydown', handleKeyDown);
                 return () => window.removeEventListener('keydown', handleKeyDown);
             }, [currentCardIndex, flipAngle, totalCards, modalState.isOpen, activeCategoryIndex, decks, filterStatus, user]);
-
 
             const handleExport = () => {
                 if (decks.length === 0) return;
@@ -253,7 +258,6 @@
 
                 if (decks.length === 0 || formData.importMode === 'new') {
                     const newName = formData.newDeckName.trim() || "新匯入卡組";
-                    // 將顏色套用 formData.deckColor，如果沒有則預設 #503422
                     const newDecks = [...decks, { category: newName, color: formData.deckColor || '#503422', cards: cards }];
                     updateDecks(newDecks);
                     setActiveCategoryIndex(newDecks.length - 1);
@@ -296,7 +300,6 @@
                 if (totalCards <= 1) return;
                 setFlipAngle(0);
                 const newDecks = [...decks];
-                // 賦予缺失 ID 的卡片順序 ID，以利後續恢復順序
                 newDecks[activeCategoryIndex].cards.forEach((c, i) => {
                     if (!c.id) c.id = Date.now() + i;
                 });
@@ -309,7 +312,6 @@
                 if (totalCards <= 1) return;
                 setFlipAngle(0);
                 const newDecks = [...decks];
-                // 依照建立時的 ID 排序恢復原狀
                 newDecks[activeCategoryIndex].cards.sort((a, b) => (a.id || 0) - (b.id || 0));
                 updateDecks(newDecks);
                 setCurrentCardIndex(0);
@@ -489,7 +491,6 @@
             };
 
             const closeModal = () => {
-                // 如果是設定視窗關閉，同步設定到雲端
                 if (modalState.type === 'settings') {
                     if (user) {
                         setDoc(doc(db, "users", user.uid), {
@@ -501,6 +502,18 @@
                 setModalState({ isOpen: false, type: null });
                 setFormData(prev => ({ ...prev, deckName: '', deckColor: '#503422', cardFront: '', cardMiddle: '', cardBack: '', note: '', importText: '', newDeckName: '', editIndex: null }));
                 setSelectedCards(new Set()); 
+            };
+
+            // 輔助函式：根據文字長短與使用者設定動態計算字體大小
+            const getCalculatedFontSize = (text) => {
+                if (cardTextSize !== '36') return `${cardTextSize}px`; // 如果使用者更改過外觀大小，以使用者設定優先
+                if (!text) return '36px';
+                const len = text.length;
+                if (len > 60) return '18px';
+                if (len > 40) return '22px';
+                if (len > 20) return '26px';
+                if (len > 12) return '30px';
+                return '36px';
             };
 
             const faces = React.useMemo(() => {
@@ -527,7 +540,6 @@
             const domFrontFace = totalFaces > 0 ? faces[frontStep % totalFaces] : null;
             const domBackFace = totalFaces > 0 ? faces[backStep % totalFaces] : null;
 
-            // 所有面統一為白色背景，統一設定 badge 顏色與垃圾桶樣式
             const getFaceClasses = (theme) => {
                 if (theme === 'front') return { bg: 'bg-white', badgeText: 'text-blue-500', badgeBg: 'bg-blue-50', trashClass: 'text-gray-300 hover:text-red-500 hover:bg-red-50' };
                 if (theme === 'middle') return { bg: 'bg-white', badgeText: 'text-emerald-600', badgeBg: 'bg-emerald-100', trashClass: 'text-gray-300 hover:text-red-500 hover:bg-red-50' };
@@ -611,7 +623,6 @@
                                     <Icons.Download className="w-4 h-4 mr-2" /> 匯出備份 (JSON)
                                 </button>
                                 
-                                {/* 統一設定按鈕 */}
                                 <button onClick={() => setModalState({ isOpen: true, type: 'settings' })} className="text-sm bg-white border px-4 py-2 rounded-full hover:bg-gray-50 transition-colors flex items-center shadow-sm text-gray-700 h-[38px]">
                                     ⚙️ 外觀設定
                                 </button>
@@ -723,8 +734,8 @@
                                                         <Icons.Trash2 className="w-4 h-4" />
                                                     </button>
 
-                                                    {/* 套用自訂字體大小與顏色 */}
-                                                    <div className="font-bold whitespace-pre-wrap leading-relaxed w-full px-4 mt-2" style={{ color: cardTextColor, fontSize: `${cardTextSize}px` }}>
+                                                    {/* 套用自訂或動態縮放字體大小與顏色 */}
+                                                    <div className="font-bold whitespace-pre-wrap leading-relaxed w-full px-4 mt-2" style={{ color: cardTextColor, fontSize: getCalculatedFontSize(domFrontFace?.text) }}>
                                                         {domFrontFace?.text}
                                                     </div>
                                                     
@@ -759,8 +770,8 @@
                                                         <Icons.Trash2 className="w-4 h-4" />
                                                     </button>
 
-                                                    {/* 套用自訂字體大小與顏色 */}
-                                                    <div className="font-bold whitespace-pre-wrap leading-relaxed w-full px-4 mt-2" style={{ color: cardTextColor, fontSize: `${cardTextSize}px` }}>
+                                                    {/* 套用自訂或動態縮放字體大小與顏色 */}
+                                                    <div className="font-bold whitespace-pre-wrap leading-relaxed w-full px-4 mt-2" style={{ color: cardTextColor, fontSize: getCalculatedFontSize(domBackFace?.text) }}>
                                                         {domBackFace?.text}
                                                     </div>
 
@@ -789,16 +800,16 @@
                                         </div>
                                     )}
                                     
-                                    {/* 最底部：Quick Tools */}
+                                    {/* 最底部：Quick Tools - 修改為不換行、可橫向滑動設定 */}
                                     {totalCards > 0 && (
-                                        <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3 w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
+                                        <div className="flex flex-nowrap overflow-x-auto custom-scrollbar items-center justify-start md:justify-center gap-2 md:gap-3 w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
                                             <button onClick={handleFirstCard} disabled={totalCards <= 1 || currentCardIndex === 0} className="w-10 h-10 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center disabled:opacity-30 hover:bg-gray-200 transition-colors shrink-0" title="回到第一張"><Icons.SkipBack className="w-4 h-4"/></button>
                                             <button onClick={handlePrev} disabled={totalCards <= 1} className="w-10 h-10 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center disabled:opacity-30 hover:bg-gray-200 transition-colors shrink-0" title="上一張"><Icons.ChevronLeft className="w-5 h-5"/></button>
                                             
-                                            <button onClick={handleShuffle} disabled={totalCards <= 1} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="px-4 md:px-5 py-2.5 rounded-full text-sm font-bold disabled:opacity-30 transition-colors flex items-center"><Icons.Shuffle className="w-4 h-4 mr-1 md:mr-1.5" />打亂</button>
-                                            <button onClick={handleRestoreOrder} disabled={totalCards <= 1} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="px-4 md:px-5 py-2.5 rounded-full text-sm font-bold disabled:opacity-30 transition-colors flex items-center"><Icons.List className="w-4 h-4 mr-1 md:mr-1.5" />恢復順序</button>
-                                            <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="px-4 md:px-5 py-2.5 rounded-full text-sm font-bold transition-colors flex items-center"><Icons.Plus className="w-4 h-4 mr-1 md:mr-1.5 border-2 border-current rounded-full" />新增</button>
-                                            <button onClick={openNoteModal} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="px-4 md:px-5 py-2.5 rounded-full text-sm font-bold transition-colors flex items-center" title="查看或編輯備註"><Icons.FileText className="w-4 h-4 mr-1 md:mr-1.5" />備註</button>
+                                            <button onClick={handleShuffle} disabled={totalCards <= 1} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="shrink-0 whitespace-nowrap px-4 md:px-5 py-2.5 rounded-full text-sm font-bold disabled:opacity-30 transition-colors flex items-center"><Icons.Shuffle className="w-4 h-4 mr-1 md:mr-1.5" />打亂</button>
+                                            <button onClick={handleRestoreOrder} disabled={totalCards <= 1} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="shrink-0 whitespace-nowrap px-4 md:px-5 py-2.5 rounded-full text-sm font-bold disabled:opacity-30 transition-colors flex items-center"><Icons.List className="w-4 h-4 mr-1 md:mr-1.5" />恢復順序</button>
+                                            <button onClick={() => setModalState({ isOpen: true, type: 'addCard' })} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="shrink-0 whitespace-nowrap px-4 md:px-5 py-2.5 rounded-full text-sm font-bold transition-colors flex items-center"><Icons.Plus className="w-4 h-4 mr-1 md:mr-1.5 border-2 border-current rounded-full" />新增</button>
+                                            <button onClick={openNoteModal} style={{ backgroundColor: buttonColor, color: '#1f2937' }} className="shrink-0 whitespace-nowrap px-4 md:px-5 py-2.5 rounded-full text-sm font-bold transition-colors flex items-center" title="查看或編輯備註"><Icons.FileText className="w-4 h-4 mr-1 md:mr-1.5" />備註</button>
 
                                             <button onClick={handleNext} disabled={totalCards <= 1} className="w-10 h-10 bg-gray-50 text-gray-600 rounded-full flex items-center justify-center disabled:opacity-30 hover:bg-gray-200 transition-colors shrink-0" title="單純下一張"><Icons.ChevronRight className="w-5 h-5"/></button>
                                         </div>
