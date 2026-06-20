@@ -58,6 +58,7 @@
 
         const App = () => {
             const [user, setUser] = React.useState(null);
+            const [isLoading, setIsLoading] = React.useState(true); // --- 優化：新增載入狀態 ---
             const [decks, setDecks] = React.useState([]);
             const [activeCategoryIndex, setActiveCategoryIndex] = React.useState(0);
             const [currentCardIndex, setCurrentCardIndex] = React.useState(0);
@@ -71,14 +72,12 @@
             const [cardTextSize, setCardTextSize] = React.useState('36'); 
             const [showNote, setShowNote] = React.useState(false); 
             
-            // 滑動與翻轉動畫狀態
             const [flipAngle, setFlipAngle] = React.useState(0);
             const [swipeOffset, setSwipeOffset] = React.useState(0);
             const [swipeOut, setSwipeOut] = React.useState(null); 
             const [resetMode, setResetMode] = React.useState(false); 
             const [isDragging, setIsDragging] = React.useState(false);
             
-            // 獨立的物理軌跡 Ref，避免 State 批次更新造成延遲
             const touchStartX = React.useRef(null);
             const currentSwipe = React.useRef(0); 
             const isSwiping = React.useRef(false);
@@ -107,6 +106,7 @@
                             setUser(null);
                         }
                     }
+                    setIsLoading(false); // --- 優化：狀態確認完畢後，關閉載入畫面 ---
                 });
                 return () => unsubscribe();
             }, []);
@@ -240,9 +240,6 @@
                 }, 300);
             }, [totalCards, swipeOut]);
 
-            // ==========================================
-            // 滑鼠與觸控事件分離處理，確保雙平台體驗完美
-            // ==========================================
             const onTouchStart = (e) => {
                 touchStartX.current = e.targetTouches[0].clientX;
                 currentSwipe.current = 0;
@@ -483,7 +480,6 @@
                 updateDecks(newDecks);
             };
 
-            // 評分後自動抽卡
             const handleRateAndNext = (e, status) => {
                 if (e) e.stopPropagation();
                 if (!currentCard || swipeOut || flipLock.current) return;
@@ -718,13 +714,9 @@
                 );
             };
 
-            // ==========================================
-            // 阻力與淡出計算
-            // ==========================================
             const maxDrag = 150; 
             let visualSwipe = swipeOffset;
             if (Math.abs(swipeOffset) > maxDrag) {
-                // 超過 150px 後增加阻力，不會無止盡被拉走
                 visualSwipe = Math.sign(swipeOffset) * (maxDrag + (Math.abs(swipeOffset) - maxDrag) * 0.15);
             }
             
@@ -740,9 +732,18 @@
             } else {
                 swipeTransform = `translate3d(${visualSwipe}px, 0, 0)`; 
                 if (isDragging) {
-                    // 越往兩邊拉越透明，最少保持 0.2 透明度
                     currentOpacity = Math.max(0.2, 1 - (Math.abs(swipeOffset) / 250));
                 }
+            }
+
+            // --- 優化：在此攔截渲染，顯示載入動畫 ---
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+                        <Icons.Cloud className="w-16 h-16 text-blue-400 animate-pulse mb-4" />
+                        <p className="text-gray-500 font-bold tracking-widest animate-pulse">雲端連線中...</p>
+                    </div>
+                );
             }
 
             return (
@@ -765,7 +766,6 @@
                         .face-front { transform: rotateY(0deg) translateZ(1px); }
                         .face-back { transform: rotateY(180deg) translateZ(1px); }
                         
-                        /* 關鍵：強制阻擋原生水平滑動/拖曳與選取行為，保留垂直滾動 */
                         .no-select { 
                             user-select: none; 
                             -webkit-user-select: none; 
@@ -809,7 +809,6 @@
                         </div>
                     ) : (
                         <div className="w-full max-w-4xl">
-                            {/* 工具列 */}
                             <div className="flex flex-wrap justify-center gap-3 mb-8 items-center">
                                 <button onClick={() => setModalState({ isOpen: true, type: 'importText' })} className="text-sm bg-white border px-4 py-2 rounded-full hover:bg-gray-50 transition-colors flex items-center shadow-sm text-gray-700 h-[38px]">
                                     <Icons.FileText className="w-4 h-4 mr-2" /> 快速匯入文字
@@ -836,7 +835,6 @@
                                 </div>
                             ) : (
                                 <div className="w-full max-w-2xl mx-auto">
-                                    {/* 卡組選擇分頁 */}
                                     <div className="flex overflow-x-auto custom-scrollbar bg-white p-2 rounded-2xl mb-6 border border-gray-200 gap-2 items-center shadow-sm">
                                         {decks.map((cat, i) => {
                                             const deckColor = cat.color || '#503422';
@@ -859,7 +857,6 @@
                                         </button>
                                     </div>
 
-                                    {/* 卡組標題與上方篩選列 */}
                                     <div className="flex flex-wrap justify-between items-center mb-4 px-2 gap-3">
                                         <div className="flex items-center gap-2 md:gap-3">
                                             <span className="font-bold text-gray-800 text-xl">{currentCategory.category}</span>
@@ -886,7 +883,6 @@
                                         </div>
                                     </div>
 
-                                    {/* 字卡主體 - 外層負責抽卡滑動，內層負責3D翻轉 */}
                                     <div className="card-perspective aspect-[4/3] md:aspect-[16/10] mb-3 w-full">
                                         {totalCards === 0 ? (
                                             <div className="w-full h-full bg-white rounded-3xl border-2 border-dashed border-gray-300 flex items-center justify-center flex-col shadow-sm">
@@ -923,7 +919,6 @@
                                                 onDragStart={(e) => e.preventDefault()}
                                                 onClick={safeHandleFlip}
                                             >
-                                                {/* 內層負責 3D 翻轉，切換卡片時由 resetMode 瞬間歸零不觸發轉回動畫 */}
                                                 <div 
                                                     className="w-full h-full card-flipper"
                                                     style={{ 
@@ -931,10 +926,8 @@
                                                         transition: resetMode ? 'none' : 'transform 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
                                                     }}
                                                 >
-                                                    {/* DOM Front */}
                                                     <div className={`card-face face-front rounded-3xl shadow-xl flex flex-col items-center justify-center p-8 border-t-[6px] text-center overflow-y-auto custom-scrollbar ${frontTheme.bg}`} style={{ borderTopColor: currentCategory?.color || '#503422' }}>
                                                         
-                                                        {/* 左上角星星與Face Label (translateZ防重疊) */}
                                                         <div className="absolute top-5 left-5 flex items-center gap-2" style={{ transform: 'translateZ(10px)' }}>
                                                             <button onClick={(e) => { e.stopPropagation(); handleToggleStar(currentCard.originalIndex); }} className="p-1 rounded-full hover:bg-gray-100 text-yellow-400 transition-colors drop-shadow-sm z-10" title="標記星號">
                                                                 <Icons.Star className="w-7 h-7" filled={currentCard?.isStarred} />
@@ -963,7 +956,6 @@
                                                         </button>
                                                     </div>
                                                     
-                                                    {/* DOM Back */}
                                                     <div className={`card-face face-back rounded-3xl shadow-xl flex flex-col items-center justify-center p-8 border-t-[6px] text-center overflow-y-auto custom-scrollbar ${backTheme.bg}`} style={{ borderTopColor: currentCategory?.color || '#503422' }}>
                                                         
                                                         <div className="absolute top-5 left-5 flex items-center gap-2" style={{ transform: 'translateZ(10px)' }}>
@@ -999,7 +991,6 @@
                                         )}
                                     </div>
 
-                                    {/* 評分按鈕 */}
                                     {totalCards > 0 && (
                                         <div className="grid grid-cols-3 gap-2 md:gap-4 w-full mb-3">
                                             <button onClick={(e) => handleRateAndNext(e, 'unfamiliar')} className="bg-red-50 text-red-600 hover:bg-red-100 py-3 md:py-4 rounded-2xl font-bold text-sm md:text-base transition-colors flex items-center justify-center shadow-sm">
@@ -1014,7 +1005,6 @@
                                         </div>
                                     )}
 
-                                    {/* 備註區塊 (純文字收折與直接編輯) */}
                                     {totalCards > 0 && (
                                         <div className="w-full flex flex-col items-center mb-3">
                                             <div 
@@ -1044,7 +1034,6 @@
                                         </div>
                                     )}
                                     
-                                    {/* 最底部：Quick Tools - 極簡無字圖示版 */}
                                     {totalCards > 0 && (
                                         <div className="flex flex-nowrap overflow-x-auto custom-scrollbar items-center justify-center gap-4 md:gap-6 w-full bg-white p-3 rounded-2xl shadow-sm border border-gray-100">
                                             <button onClick={handleFirstCard} disabled={totalCards <= 1 || currentCardIndex === 0} className="w-12 h-12 rounded-full flex items-center justify-center disabled:opacity-30 transition-all hover:brightness-95 shadow-sm shrink-0" style={{ backgroundColor: buttonColor, color: '#1f2937' }} title="回到第一張">
@@ -1066,7 +1055,6 @@
                         </div>
                     )}
 
-                    {/* 所有彈出視窗模組 */}
                     {modalState.isOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-center z-50 p-4 animate-[fadeIn_0.2s]">
                             <div className={`bg-white rounded-3xl shadow-2xl w-full relative transition-all ${modalState.type === 'cardList' ? 'max-w-4xl p-6 md:p-8' : 'max-w-md p-8'}`}>
